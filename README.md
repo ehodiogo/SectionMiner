@@ -1,29 +1,30 @@
 # SectionMiner
 
-Extrator de estrutura de artigos em PDF (secoes e subsecoes) com apoio de LLM.
+Extrator de secoes e subsecoes de PDFs academicos, com heuristicas de layout + consolidacao por LLM.
 
-O projeto le o PDF, detecta candidatos a titulos com heuristicas (fonte/tamanho/estilo), e consolida uma arvore hierarquica em JSON.
+Este README foi organizado com foco nas funcoes principais que sao usadas em `test.py`.
 
-## O que este projeto faz
+## Visao geral
 
-- Extrai blocos de texto e metadados de fonte via PyMuPDF.
-- Detecta headings provaveis (titulo de secao/subsecao).
-- Monta secoes com intervalos de texto (`start`, `end`).
-- Usa LLM para unificar a estrutura final em arvore JSON.
-- Permite recuperar o texto de uma secao pelo titulo.
+O fluxo do projeto e:
+
+1. Ler spans do PDF com fonte/tamanho (`PyMuPDF`).
+2. Detectar titulos provaveis (heading).
+3. Montar secoes com intervalos de caracteres (`start`, `end`).
+4. Enviar um indice de headings para LLM consolidar a arvore final.
+5. Buscar texto de uma secao pelo titulo.
 
 ## Requisitos
 
 - Python 3.10+
-- Chave da OpenAI valida
-
-Dependencias (arquivo `requirements.txt`):
-
-- `pymupdf`
-- `langchain`
-- `langchain-openai`
-- `langchain-text-splitters`
-- `langchain-community`
+- `OPENAI_API_KEY` valida
+- Dependencias em `requirements.txt`:
+  - `pymupdf`
+  - `langchain`
+  - `langchain-openai`
+  - `langchain-text-splitters`
+  - `langchain-community`
+  - `python-decouple`
 
 ## Instalacao
 
@@ -34,124 +35,131 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Configuracao da API Key
+## Configuracao da chave
 
-Evite hardcode de chave no codigo.
-No macOS/Linux, exporte como variavel de ambiente:
+O `test.py` usa `python-decouple` para ler `OPENAI_API_KEY`.
+
+Opcao 1 (rapida, terminal atual):
 
 ```bash
 export OPENAI_API_KEY="sua-chave-aqui"
 ```
 
-## Uso rapido
+Opcao 2 (`.env` na raiz do projeto):
 
-Exemplo minimo:
-
-```python
-import os
-import json
-from base import SectionMiner
-
-pdf_path = "files/Artigo_Provatis.pdf"
-api_key = os.getenv("OPENAI_API_KEY")
-
-miner = SectionMiner(pdf_path, api_key=api_key)
-
-structure, tokens = miner.extract_structure(return_tokens=True)
-print(tokens)
-print(json.dumps(structure, indent=2, ensure_ascii=False))
-
-intro = miner.get_section("Introducao")
-if intro:
-    print(intro["text"][:800])
-
-miner.close()
+```env
+OPENAI_API_KEY=sua-chave-aqui
 ```
 
-Se quiser executar o script de teste atual:
+## Fluxo principal (o que o `test.py` faz)
+
+Arquivo: `test.py`
+
+1. Le a chave com `config("OPENAI_API_KEY")`.
+2. Cria `SectionMiner("files/Artigo_Provatis.pdf", api_key)`.
+3. Executa `extract_structure(return_tokens=True)` para obter:
+   - arvore de secoes/subsecoes
+   - uso de tokens/custo
+4. Consulta uma secao (ex.: `introducao`) por offsets com `get_section_start_and_end_chars`.
+5. Recupera texto completo com `get_full_text()` e fatia por `[start:end]`.
+6. Reexecuta pipeline manual (`extract_blocks`, `build_full_text`, `build_sections`) e imprime secoes com `get_sections()` e `get_section_text()`.
+7. Fecha o PDF com `close()` no `finally`.
+
+Executar:
 
 ```bash
 python3 test.py
 ```
 
-## Estrutura de arquivos
+## Funcoes principais da API (`SectionMiner`)
+
+Arquivo: `base.py`
+
+- `extract_structure(return_tokens=False)`
+  - Pipeline completo (extracao, deteccao, merge com LLM).
+  - Retorna a arvore final; com `return_tokens=True`, retorna `(arvore, usage)`.
+
+- `get_section_start_and_end_chars(title)`
+  - Retorna `(start, end)` da secao localizada por titulo.
+  - Bom para recortar diretamente em `get_full_text()`.
+
+- `get_full_text()`
+  - Retorna o texto linear completo do PDF processado.
+
+- `get_section_text(title)`
+  - Busca no tree consolidado e devolve o texto da secao.
+
+- `get_sections()`
+  - Retorna lista de titulos detectados a partir das estruturas internas.
+
+- `extract_blocks()`, `build_full_text()`, `build_sections()`
+  - Etapas internas do pipeline usadas no `test.py` para depuracao/inspecao.
+
+- `close()`
+  - Fecha o documento PDF aberto em memoria.
+
+## Exemplo minimo (mesma ideia do teste)
+
+```python
+import json
+from decouple import config
+from base import SectionMiner
+
+api_key = config("OPENAI_API_KEY")
+miner = SectionMiner("files/Artigo_Provatis.pdf", api_key)
+
+try:
+    structure, tokens = miner.extract_structure(return_tokens=True)
+    print(tokens)
+    print(json.dumps(structure, indent=2, ensure_ascii=False))
+
+    start, end = miner.get_section_start_and_end_chars("introducao")
+    if start is not None and end is not None:
+        print(miner.get_full_text()[start:end][:800])
+
+    print(miner.get_section_text("conclusao"))
+finally:
+    miner.close()
+```
+
+## Estrutura do projeto
 
 ```text
 SectionMiner/
-  base.py          # pipeline principal (PDF -> secoes)
-  client.py        # cliente LLM e consolidacao de arvores
-  prompts.py       # reservado para prompts compartilhados
-  test.py          # exemplo de execucao
-  files/           # PDFs de entrada
+  base.py        # classe SectionMiner (pipeline + consultas)
+  client.py      # cliente LLM e merge da arvore
+  prompts.py     # prompt de consolidacao
+  test.py        # fluxo de uso principal
+  files/         # PDFs de exemplo
 ```
 
-## Formato da saida
+## Problemas comuns
 
-A estrutura principal retornada por `extract_structure()` segue o formato de arvore JSON:
+### 1) "As secoes estao vindo quebradas"
 
-```json
-{
-  "title": "Document",
-  "children": [
-    {
-      "title": "Introducao",
-      "children": [
-        {
-          "title": "Contexto",
-          "children": []
-        }
-      ]
-    }
-  ]
-}
-```
+- Revise filtros em `_is_noise_heading` e `_looks_like_heading` em `base.py`.
+- Ajuste threshold em `_detect_threshold` para o padrao do seu PDF.
+- PDFs com layout irregular (duas colunas, rodape intrusivo, OCR ruim) tendem a piorar a deteccao.
 
-Cada secao interna gerada em `base.py` possui tambem metadados de texto:
+### 2) Secao nao encontrada por titulo
 
-- `title`: titulo detectado
-- `level`: 1 (secao) ou 2 (subsecao)
-- `start`: offset inicial no texto completo
-- `end`: offset final no texto completo
-- `text`: conteudo bruto entre `start` e `end`
+- Tente variacao sem acento/caixa (a busca normaliza texto).
+- Verifique os titulos retornados por `get_sections()`.
 
-## Limitacoes atuais
+### 3) Erro de chave OpenAI
 
-- PDFs com layout muito irregular podem gerar heading quebrado.
-- Qualidade depende da consistencia tipografica do documento.
-- O merge via LLM pode variar com o modelo e prompts.
+- Confirme `OPENAI_API_KEY` no mesmo ambiente da execucao.
+- Se usar `.env`, confirme que esta na raiz do projeto.
 
 ## TODO (coisas a fazer)
 
-- [X] Migrar carregamento da API key para `.env` (hoje usa `OPENAI_API_KEY` por variavel de ambiente).
-- [ ] Criar testes automatizados para `detect_headings` e `merge_trees`.
-- [X] Melhorar filtro de ruido para reduzir titulos quebrados em PDFs complexos.
-- [ ] Criar uma CLI simples (`sectionminer extract arquivo.pdf`).
+- [ ] Criar testes automatizados para `detect_headings`, `build_sections` e `get_section_text`.
+- [ ] Adicionar modo sem LLM (somente heuristica local) para uso offline.
+- [ ] Criar CLI: `sectionminer extract arquivo.pdf --json out.json`.
+- [ ] Expor parametros de heuristica por configuracao (threshold, filtros de ruido).
+- [ ] Melhorar merge para manter apenas secoes/subsecoes validas (sem fragmentos quebrados).
 
-## FAQ rapido
+## Licenca
 
-**1) Estou recebendo erro de autenticacao da OpenAI. O que verificar?**
-
-- Confirme se `OPENAI_API_KEY` foi exportada no mesmo terminal da execucao.
-- Verifique se a chave esta ativa e sem espacos extras.
-
-**2) As secoes estao vindo quebradas. Como melhorar?**
-
-- Ajuste as heuristicas de heading em `base.py` (filtros de ruido, tamanho minimo/maximo).
-- Teste com outro PDF para comparar se o problema e do layout especifico.
-
-**3) Nao aparece Introducao/Conclusao no JSON final.**
-
-- Alguns documentos nao usam esses titulos de forma explicita.
-- Revise o merge no `client.py` e, se necessario, refine o prompt de consolidacao.
-
-**4) Posso rodar sem LLM?**
-
-- Hoje o merge final depende de LLM.
-- Um modo offline/local esta listado no TODO como melhoria futura.
-
-## Proximos passos sugeridos
-
-1. Rodar com 2-3 PDFs diferentes e comparar se as secoes principais saem limpas.
-2. Ajustar regras de heading em `base.py` para o padrao de layout mais frequente dos seus artigos.
-3. Depois, adicionar testes para evitar regressao nas heuristicas.
+Definir licenca do projeto (ex.: MIT) antes de publicacao.
 
