@@ -1,6 +1,7 @@
 import argparse
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 from decouple import config
@@ -22,6 +23,18 @@ def _write_output(data: Any, output_path: str | None, pretty: bool) -> None:
     print(text)
 
 
+def _print_usage_summary(usage: dict | None) -> None:
+    if not usage:
+        return
+    sys.stderr.write(
+        "Cost summary: "
+        f"prompt_tokens={usage.get('prompt_tokens', 0)} "
+        f"completion_tokens={usage.get('completion_tokens', 0)} "
+        f"total_tokens={usage.get('total_tokens', 0)} "
+        f"cost_usd={usage.get('cost_usd', 0):.8f}\n"
+    )
+
+
 def _extract_command(args: argparse.Namespace) -> int:
     api_key = _resolve_api_key(args.api_key)
 
@@ -36,21 +49,23 @@ def _extract_command(args: argparse.Namespace) -> int:
                 "sections": sections,
             }
             _write_output(payload, args.output, args.pretty)
+            if args.show_cost:
+                _print_usage_summary({"cost_usd": 0.0, "total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0})
             return 0
 
         if not api_key:
             raise SystemExit("OPENAI_API_KEY nao encontrada. Use --api-key ou variavel de ambiente.")
 
-        if args.tokens:
+        if args.tokens or args.show_cost:
             structure, usage = miner.extract_structure(return_tokens=True)
-            payload = {
-                "structure": structure,
-                "usage": usage,
-            }
+            payload = {"structure": structure, "usage": usage} if args.tokens else structure
         else:
             payload = miner.extract_structure(return_tokens=False)
+            usage = None
 
         _write_output(payload, args.output, args.pretty)
+        if args.show_cost:
+            _print_usage_summary(usage)
         return 0
     finally:
         miner.close()
@@ -70,17 +85,25 @@ def _section_text_command(args: argparse.Namespace) -> int:
                 raise SystemExit(f"Secao nao encontrada: {args.title}")
             text = miner.get_full_text()[start:end]
             print(text)
+            if args.show_cost:
+                _print_usage_summary({"cost_usd": 0.0, "total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0})
             return 0
 
         if not api_key:
             raise SystemExit("OPENAI_API_KEY nao encontrada. Use --api-key ou variavel de ambiente.")
 
-        miner.extract_structure()
+        usage = None
+        if args.show_cost:
+            _, usage = miner.extract_structure(return_tokens=True)
+        else:
+            miner.extract_structure()
         text = miner.get_section_text(args.title)
         if text is None:
             raise SystemExit(f"Secao nao encontrada: {args.title}")
 
         print(text)
+        if args.show_cost:
+            _print_usage_summary(usage)
         return 0
     finally:
         miner.close()
@@ -99,6 +122,7 @@ def _build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--api-key", help="Chave OpenAI (fallback: OPENAI_API_KEY)")
     extract.add_argument("--model", default="gpt-4o-mini", help="Modelo OpenAI")
     extract.add_argument("--tokens", action="store_true", help="Inclui uso de tokens no JSON")
+    extract.add_argument("--show-cost", action="store_true", help="Mostra custo total da chamada no stderr")
     extract.add_argument("--heuristic-only", action="store_true", help="Nao usa LLM; retorna secoes heuristicas")
     extract.add_argument("--output", help="Arquivo de saida JSON")
     extract.add_argument("--pretty", action="store_true", help="Formata JSON com indentacao")
@@ -110,6 +134,7 @@ def _build_parser() -> argparse.ArgumentParser:
     section_text.add_argument("--api-key", help="Chave OpenAI (fallback: OPENAI_API_KEY)")
     section_text.add_argument("--model", default="gpt-4o-mini", help="Modelo OpenAI")
     section_text.add_argument("--heuristic-only", action="store_true", help="Nao usa LLM; busca na estrutura heuristica")
+    section_text.add_argument("--show-cost", action="store_true", help="Mostra custo total da chamada no stderr")
     section_text.set_defaults(func=_section_text_command)
 
     return parser
