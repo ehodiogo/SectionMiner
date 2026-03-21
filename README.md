@@ -38,6 +38,8 @@ pip install -e .
 
 Depois disso, voce pode importar com `from sectionminer import SectionMiner` em qualquer script do ambiente.
 
+Tambem instala a CLI `sectionminer`.
+
 ## Configuracao da chave
 
 O `test.py` usa `python-decouple` para ler `OPENAI_API_KEY`.
@@ -78,6 +80,44 @@ Exemplo alternativo (arquivo dedicado em `examples/`):
 
 ```bash
 python3 examples/basic_usage.py
+```
+
+## CLI inicial
+
+Comando raiz:
+
+```bash
+sectionminer --help
+```
+
+Extrair estrutura (com LLM):
+
+```bash
+sectionminer extract files/Artigo_Provatis.pdf --tokens --pretty
+```
+
+Extrair estrutura heuristica (sem LLM/OpenAI):
+
+```bash
+sectionminer extract files/Artigo_Provatis.pdf --heuristic-only --pretty
+```
+
+Salvar saida JSON em arquivo:
+
+```bash
+sectionminer extract files/Artigo_Provatis.pdf --heuristic-only --output out.json --pretty
+```
+
+Buscar texto de secao por titulo:
+
+```bash
+sectionminer section-text files/Artigo_Provatis.pdf "introducao"
+```
+
+Buscar texto de secao sem LLM (heuristica):
+
+```bash
+sectionminer section-text files/Artigo_Provatis.pdf "introducao" --heuristic-only
 ```
 
 ## Funcoes principais da API (`SectionMiner`)
@@ -170,11 +210,42 @@ SectionMiner/
 
 - [ ] Criar testes automatizados para `detect_headings`, `build_sections` e `get_section_text`.
 - [ ] Adicionar modo sem LLM (somente heuristica local) para uso offline.
-- [ ] Criar CLI: `sectionminer extract arquivo.pdf --json out.json`.
+- [x] Criar CLI inicial: `sectionminer extract arquivo.pdf --output out.json`.
 - [ ] Expor parametros de heuristica por configuracao (threshold, filtros de ruido).
 - [ ] Melhorar merge para manter apenas secoes/subsecoes validas (sem fragmentos quebrados).
 
+## Publicacao (preparo inicial)
+
+O projeto ja possui `pyproject.toml`, `LICENSE` e entrypoint de CLI.
+
+Gerar artefatos:
+
+```bash
+python3 -m pip install --upgrade build twine
+python3 -m build
+python3 -m twine check dist/*
+```
+
+Teste local do wheel:
+
+```bash
+python3 -m pip install dist/*.whl
+sectionminer --help
+```
+
+Publicar (TestPyPI primeiro, recomendado):
+
+```bash
+python3 -m twine upload --repository testpypi dist/*
+```
+
+Publicar no PyPI oficial:
+
+```bash
+python3 -m twine upload dist/*
+```
+
 ## Licenca
 
-Definir licenca do projeto (ex.: MIT) antes de publicacao.
+MIT (arquivo `LICENSE`).
 

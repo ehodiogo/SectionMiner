@@ -1,11 +1,15 @@
+LICENSE
 README.md
 pyproject.toml
 sectionminer/__init__.py
+sectionminer/__main__.py
+sectionminer/cli.py
 sectionminer/client.py
 sectionminer/miner.py
 sectionminer/prompts.py
 sectionminer.egg-info/PKG-INFO
 sectionminer.egg-info/SOURCES.txt
 sectionminer.egg-info/dependency_links.txt
+sectionminer.egg-info/entry_points.txt
 sectionminer.egg-info/requires.txt
 sectionminer.egg-info/top_level.txt

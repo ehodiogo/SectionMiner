@@ -9,6 +9,17 @@ description = "Extract sections and subsections from academic PDFs"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "SectionMiner Contributors" }]
+license = "MIT"
+keywords = ["pdf", "nlp", "llm", "sections", "academic"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Text Processing",
+]
 dependencies = [
   "pymupdf",
   "langchain",
@@ -17,6 +28,9 @@ dependencies = [
   "langchain-community",
   "python-decouple",
 ]
+
+[project.scripts]
+sectionminer = "sectionminer.cli:main"
 
 [tool.setuptools]
 include-package-data = true
