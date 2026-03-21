@@ -3,7 +3,6 @@ from client import LLMClient
 import unicodedata
 import re
 
-
 class SectionMiner:
 
     def __init__(self, pdf: str, api_key: str, model: str = "gpt-4o-mini"):
@@ -18,10 +17,7 @@ class SectionMiner:
         self.blocks: list | None = None
         self.offsets: list | None = None
         self.sections: list | None = None
-
-    # ------------------------------------------------------------------
-    # Text / unicode helpers
-    # ------------------------------------------------------------------
+        self.section_structures: dict | None = None
 
     def normalize(self, text: str) -> str:
         return unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode("ascii").lower()
@@ -31,10 +27,6 @@ class SectionMiner:
 
     def _is_corrupted(self, text: str) -> bool:
         return "â€" in text or "\ufffd" in text
-
-    # ------------------------------------------------------------------
-    # Heading-quality filters
-    # ------------------------------------------------------------------
 
     def _is_noise_heading(self, text: str) -> bool:
         t = text.strip()
@@ -58,26 +50,18 @@ class SectionMiner:
         if self._is_noise_heading(text):
             return False
 
-        # Numbered sections: "1 Introduction", "2.1 Method" etc.
         has_numbering = bool(re.match(r"^\d+(?:\.\d+)*\s+\w", text))
 
-        # Dash-prefixed headings: "-Metodologia", "- Procedimentos"
         has_dash_prefix = bool(re.match(r"^[-–—]\s*\w", text))
 
-        # Short all-caps headings: "RESULTADOS", "DISCUSSÃO" (max 5 words)
         is_allcaps = text.isupper() and len(text.split()) <= 5
 
-        # Both larger than average AND bold — require both to avoid false positives
         is_styled = (
             offset["size"] >= threshold
             and "bold" in offset["font"].lower()
         )
 
         return has_numbering or has_dash_prefix or is_allcaps or is_styled
-
-    # ------------------------------------------------------------------
-    # PDF extraction
-    # ------------------------------------------------------------------
 
     def extract_blocks(self) -> list:
         blocks = []
@@ -186,12 +170,8 @@ class SectionMiner:
                 "text": self.full_text[start:end],
             })
 
-        self.sections = sections
+        self.section_structures = sections
         return sections
-
-    # ------------------------------------------------------------------
-    # Structure extraction (main entry point)
-    # ------------------------------------------------------------------
 
     def extract_structure(self, return_tokens: bool = False):
         self.extract_blocks()
@@ -199,10 +179,8 @@ class SectionMiner:
         self.build_sections()
         self.client = LLMClient(api_key=self.api_key, model=self.model, max_tokens=4096)
 
-        # Build heading index WITH real anchors so the LLM never has to
-        # invent positions — it only organises the hierarchy.
         heading_index = []
-        for s in self.sections:
+        for s in self.section_structures:
             start_anchor = self.full_text[s["start"]: s["start"] + 60].strip()
             end_anchor   = self.full_text[max(0, s["end"] - 60): s["end"]].strip()
             heading_index.append({
@@ -214,36 +192,25 @@ class SectionMiner:
 
         result, usage = self.client.merge_trees(heading_index)
 
-        # Inject real char positions from self.sections (source of truth)
         self._inject_positions(result)
 
         self.structure = result
+        self.sections = (self.structure, usage) if return_tokens else self.structure
         return (self.structure, usage) if return_tokens else self.structure
 
-    # ------------------------------------------------------------------
-    # Position injection
-    # ------------------------------------------------------------------
-
     def _inject_positions(self, node: dict) -> None:
-        """
-        Walk the LLM-produced tree and attach start_char / end_char from
-        self.sections.  Uses start_anchor as a fallback when the title
-        match fails (e.g. the LLM slightly renamed a heading).
-        """
         title = node.get("title", "")
 
         if title and title != "Document":
             sec = self._find_section_by_title(title)
 
             if sec is None:
-                # Fallback: locate by start_anchor in full_text
                 anchor = node.get("start_anchor", "")
                 if anchor and self.full_text:
                     idx = self.full_text.find(anchor)
                     if idx != -1:
-                        # find the section whose start is closest to idx
                         sec = min(
-                            self.sections,
+                            self.section_structures,
                             key=lambda s: abs(s["start"] - idx),
                         )
 
@@ -258,7 +225,6 @@ class SectionMiner:
         for child in children:
             self._inject_positions(child)
 
-        # Fill end_char gaps: each child ends where the next one begins
         for i, child in enumerate(children):
             if child.get("end_char") is None:
                 next_start = (
@@ -268,8 +234,6 @@ class SectionMiner:
                 )
                 child["end_char"] = next_start
 
-        # Parent end_char must reach the end of its last child so that
-        # get_section_text returns the full content including subsections.
         if children:
             last_child_end = children[-1].get("end_char")
             if last_child_end is not None:
@@ -277,20 +241,14 @@ class SectionMiner:
                 if current_end is None or last_child_end > current_end:
                     node["end_char"] = last_child_end
 
-    # ------------------------------------------------------------------
-    # Section lookup helpers
-    # ------------------------------------------------------------------
-
     def _find_section_by_title(self, title: str) -> dict | None:
         norm = self.normalize(title)
 
-        # 1. exact match
-        for s in self.sections:
+        for s in self.section_structures:
             if self.normalize(s["title"]) == norm:
                 return s
 
-        # 2. partial / substring match
-        for s in self.sections:
+        for s in self.section_structures:
             s_norm = self.normalize(s["title"])
             if norm in s_norm or s_norm in norm:
                 return s
@@ -316,14 +274,26 @@ class SectionMiner:
                 return found
         return None
 
-    # ------------------------------------------------------------------
-    # Public accessors
-    # ------------------------------------------------------------------
-
     def get_section(self, title: str) -> dict | None:
-        if not self.sections:
+        if not self.section_structures:
             raise ValueError("Execute extract_structure primeiro")
         return self._find_section_by_title(title)
+
+    def get_sections(self) -> list | None:
+        if not self.section_structures:
+            raise ValueError("Execute extract_structure primeiro")
+
+        def extract_titles(node):
+            result = {"title": node["title"]}
+            if node.get("children"):
+                result["children"] = [extract_titles(child) for child in node["children"]]
+
+            if isinstance(result, dict):
+                result = result["title"]
+            return result
+
+        self.sections = [extract_titles(s) for s in self.section_structures]
+        return self.sections
 
     def get_section_text(self, title: str) -> str | None:
         if not self.structure:

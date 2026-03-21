@@ -4,7 +4,6 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_community.callbacks import get_openai_callback
 from prompts import MERGE_TREE_PROMPT
 
-
 class LLMClient:
 
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", max_tokens: int = 8000):
@@ -15,10 +14,6 @@ class LLMClient:
             max_tokens=max_tokens,
         )
         self.parser = JsonOutputParser()
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     def _run(self, chain, inputs: dict) -> tuple[dict, dict]:
         with get_openai_callback() as cb:
@@ -32,11 +27,6 @@ class LLMClient:
         return result, usage
 
     def _sanitize_tree(self, data: dict) -> dict:
-        """
-        Normalise the raw JSON returned by the LLM into a clean tree that
-        only carries title + children (positions are injected later by
-        SectionMiner, which is the single source of truth for char offsets).
-        """
         if not isinstance(data, dict):
             return {"title": "Document", "children": []}
 
@@ -68,18 +58,7 @@ class LLMClient:
             "children": clean_nodes(data.get("children", []), 1),
         }
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def merge_trees(self, heading_index: list) -> tuple[dict, dict]:
-        """
-        Receive the flat heading index produced by SectionMiner (list of
-        dicts with title, level, start_anchor, end_anchor) and ask the LLM
-        to organise them into a two-level hierarchy.
-
-        Char positions are NOT resolved here — SectionMiner owns that.
-        """
         prompt = ChatPromptTemplate.from_template(MERGE_TREE_PROMPT)
         chain = prompt | self.llm | self.parser
         raw, usage = self._run(chain, {"trees": heading_index})

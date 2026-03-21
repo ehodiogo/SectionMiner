@@ -35,9 +35,9 @@ def main():
         miner.build_full_text()
         miner.build_sections()
 
-        for s in miner.sections:
-            print("Extraindo texto da secao:", s['title'])
-            print(miner.get_section_text({repr(s['title'])}))
+        for s in miner.get_sections():
+            print("Extraindo texto da secao:", s)
+            print(miner.get_section_text(s))
 
     finally:
         miner.close()
