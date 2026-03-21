@@ -122,7 +122,7 @@ Cada secao interna gerada em `base.py` possui tambem metadados de texto:
 
 ## TODO (coisas a fazer)
 
-- [ ] Migrar carregamento da API key para `.env` (hoje usa `OPENAI_API_KEY` por variavel de ambiente).
+- [X] Migrar carregamento da API key para `.env` (hoje usa `OPENAI_API_KEY` por variavel de ambiente).
 - [ ] Criar testes automatizados para `detect_headings` e `merge_trees`.
 - [ ] Melhorar filtro de ruido para reduzir titulos quebrados em PDFs complexos.
 - [ ] Criar uma CLI simples (`sectionminer extract arquivo.pdf`).

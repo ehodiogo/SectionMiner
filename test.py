@@ -1,28 +1,47 @@
-import os
+from decouple import config
 import json
 from base import SectionMiner
 
+
 def main():
-	api_key = os.getenv("OPENAI_API_KEY")
-	if not api_key:
-		raise SystemExit(
-			"OPENAI_API_KEY nao encontrada. Exporte a variavel e rode novamente."
-		)
+    api_key = config("OPENAI_API_KEY")
 
-	section_miner = SectionMiner("files/Artigo_Provatis.pdf", api_key=api_key)
-	try:
-		# estrutura + tokens
-		structure, tokens = section_miner.extract_structure(return_tokens=True)
+    if not api_key:
+        raise SystemExit("OPENAI_API_KEY nao encontrada.")
 
-		print(tokens)
-		print(json.dumps(structure, indent=4, ensure_ascii=False))
+    miner = SectionMiner("files/Artigo_Provatis.pdf", api_key)
 
-		# pegar texto da introducao
-		intro = section_miner.get_section("Introducao")
-		print("Introducao", intro)
-	finally:
-		section_miner.close()
+    try:
+        structure, tokens = miner.extract_structure(return_tokens=True)
+
+        print("\n=== TOKENS ===")
+        print(tokens)
+
+        print("\n=== STRUCTURE ===")
+        print(json.dumps(structure, indent=2, ensure_ascii=False))
+
+        print("\n=== INTRO ===")
+        title = "introducao"
+
+        start, end = miner.get_section_start_and_end_chars(title)
+        print("start:", start, "end:", end)
+        texto_completo = miner.get_full_text()
+        print("Texto da secao:", texto_completo[start:end])
+        #
+        # text = miner.get_section_text(title)
+        # print(text)
+        #
+        miner.extract_blocks()
+        miner.build_full_text()
+        miner.build_sections()
+
+        for s in miner.sections:
+            print("Extraindo texto da secao:", s['title'])
+            print(miner.get_section_text({repr(s['title'])}))
+
+    finally:
+        miner.close()
 
 
 if __name__ == "__main__":
-	main()
+    main()
