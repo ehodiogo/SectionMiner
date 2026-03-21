@@ -1,6 +1,6 @@
 from decouple import config
 import json
-from base import SectionMiner
+from sectionminer import SectionMiner
 
 
 def main():

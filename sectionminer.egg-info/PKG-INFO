@@ -1,3 +1,17 @@
+Metadata-Version: 2.4
+Name: sectionminer
+Version: 0.1.0
+Summary: Extract sections and subsections from academic PDFs
+Author: SectionMiner Contributors
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: pymupdf
+Requires-Dist: langchain
+Requires-Dist: langchain-openai
+Requires-Dist: langchain-text-splitters
+Requires-Dist: langchain-community
+Requires-Dist: python-decouple
+
 # SectionMiner
 
 Biblioteca Python para extrair secoes e subsecoes de PDFs academicos com heuristicas de layout + consolidacao por LLM.
