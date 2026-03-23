@@ -2,7 +2,12 @@
 
 Biblioteca Python para extrair secoes e subsecoes de PDFs academicos com heuristicas de layout + consolidacao por LLM.
 
-Este README foi organizado com foco nas funcoes principais que sao usadas em `test.py`.
+Suporta dois backends de extracao de texto:
+
+- `pymupdf` (local, via spans/layout do PDF)
+- `gemini` (OCR/extracao via Google Gemini)
+
+Em ambos os casos, a consolidacao final da arvore de secoes ainda e feita por OpenAI no estado atual do projeto.
 
 ## Visao geral
 
@@ -17,14 +22,10 @@ O fluxo do projeto e:
 ## Requisitos
 
 - Python 3.10+
-- `OPENAI_API_KEY` valida
-- Dependencias em `requirements.txt`:
-  - `pymupdf`
-  - `langchain`
-  - `langchain-openai`
-  - `langchain-text-splitters`
-  - `langchain-community`
-  - `python-decouple`
+- Dependencias em `requirements.txt`
+- Chaves de API:
+  - `OPENAI_API_KEY` (obrigatoria para consolidacao LLM)
+  - `GEMINI_API_KEY` (obrigatoria quando usar `extraction_backend="gemini"`)
 
 ## Instalacao (modo biblioteca)
 
@@ -40,20 +41,41 @@ Depois disso, voce pode importar com `from sectionminer import SectionMiner` em 
 
 Tambem instala a CLI `sectionminer`.
 
-## Configuracao da chave
+## Configuracao das chaves
 
-O `test.py` usa `python-decouple` para ler `OPENAI_API_KEY`.
+Os scripts usam `python-decouple` para ler variaveis de ambiente.
 
 Opcao 1 (rapida, terminal atual):
 
 ```bash
 export OPENAI_API_KEY="sua-chave-aqui"
+export GEMINI_API_KEY="sua-chave-aqui"
 ```
 
 Opcao 2 (`.env` na raiz do projeto):
 
 ```env
 OPENAI_API_KEY=sua-chave-aqui
+GEMINI_API_KEY=sua-chave-aqui
+```
+
+Se voce nao for usar Gemini, pode omitir `GEMINI_API_KEY`.
+
+## Backends de extracao
+
+- `pymupdf` (padrao): extrai texto a partir do layout interno do PDF.
+- `gemini`: envia o PDF para o Gemini e usa o texto retornado para o pipeline.
+
+Exemplo de construtor com Gemini:
+
+```python
+miner = SectionMiner(
+    "files/artigo_1.pdf",
+    api_key=openai_api_key,
+    extraction_backend="gemini",
+    gemini_api_key=gemini_api_key,
+    gemini_model="gemini-2.5-flash-lite",
+)
 ```
 
 ## Fluxo principal (o que o `test.py` faz)
@@ -82,6 +104,22 @@ Exemplo alternativo (arquivo dedicado em `examples/`):
 python3 examples/basic_usage.py
 ```
 
+## Fluxo com Gemini (o que o `test_gemini.py` faz)
+
+Arquivo: `test_gemini.py`
+
+1. Le `OPENAI_API_KEY` e `GEMINI_API_KEY`.
+2. Cria `SectionMiner(..., extraction_backend="gemini", gemini_api_key=...)`.
+3. Executa `extract_structure(return_tokens=True)` e imprime `usage`.
+4. Consulta secao por offsets com `get_section_start_and_end_chars`.
+5. Lista secoes com `get_sections()` e imprime com `get_section_text()`.
+
+Executar:
+
+```bash
+python3 test_gemini.py
+```
+
 ## CLI inicial
 
 Comando raiz:
@@ -89,6 +127,9 @@ Comando raiz:
 ```bash
 sectionminer --help
 ```
+
+Observacao importante: a CLI atual usa backend `pymupdf` (ou `--heuristic-only`) e nao expoe flag para `extraction_backend="gemini"` ainda.
+Para Gemini, use a API Python (`test_gemini.py` como referencia).
 
 Extrair estrutura (com LLM):
 
@@ -203,6 +244,30 @@ finally:
     miner.close()
 ```
 
+Exemplo minimo com Gemini:
+
+```python
+from decouple import config
+from sectionminer import SectionMiner
+
+openai_api_key = config("OPENAI_API_KEY")
+gemini_api_key = config("GEMINI_API_KEY")
+
+miner = SectionMiner(
+    "files/artigo_1.pdf",
+    api_key=openai_api_key,
+    extraction_backend="gemini",
+    gemini_api_key=gemini_api_key,
+)
+
+try:
+    structure, usage = miner.extract_structure(return_tokens=True)
+    print(usage)
+    print(structure.get("title"))
+finally:
+    miner.close()
+```
+
 ## Estrutura do projeto
 
 ```text
@@ -216,6 +281,7 @@ SectionMiner/
   client.py      # compatibilidade com import legado
   prompts.py     # compatibilidade com import legado
   test.py        # fluxo de uso principal
+  test_gemini.py # fluxo com backend Gemini
   examples/      # exemplos prontos de execucao
   files/         # PDFs de exemplo
 ```

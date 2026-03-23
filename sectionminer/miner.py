@@ -1,5 +1,6 @@
 import re
 import unicodedata
+import base64
 
 import fitz
 
@@ -7,10 +8,29 @@ from sectionminer.client import LLMClient
 
 
 class SectionMiner:
-    def __init__(self, pdf: str, api_key: str, model: str = "gpt-4o-mini"):
+    SUPPORTED_BACKENDS = ("pymupdf", "gemini")
+
+    def __init__(
+        self,
+        pdf: str,
+        api_key: str,
+        model: str = "gpt-4o-mini",
+        extraction_backend: str = "pymupdf",
+        gemini_api_key: str | None = None,
+        gemini_model: str = "gemini-2.0-flash",
+    ):
+        if extraction_backend not in self.SUPPORTED_BACKENDS:
+            raise ValueError(
+                f"extraction_backend deve ser um de {self.SUPPORTED_BACKENDS}, "
+                f"recebido: {repr(extraction_backend)}"
+            )
+
         self.pdf = pdf
         self.api_key = api_key
         self.model = model
+        self.extraction_backend = extraction_backend
+        self.gemini_api_key = gemini_api_key
+        self.gemini_model = gemini_model
         self.doc = fitz.open(pdf)
         self.client: LLMClient | None = None
 
@@ -28,7 +48,6 @@ class SectionMiner:
         return unicodedata.normalize("NFC", text)
 
     def _is_corrupted(self, text: str) -> bool:
-        # Common mojibake markers seen in PDFs with broken encoding.
         return "\u00e2\u20ac" in text or "\ufffd" in text
 
     def _is_noise_heading(self, text: str) -> bool:
@@ -120,6 +139,68 @@ class SectionMiner:
         self.offsets = offsets
         return full_text
 
+    def _extract_text_gemini(self) -> str:
+        try:
+            import google.generativeai as genai  # type: ignore
+        except ImportError as exc:
+            raise ImportError(
+                "O backend 'gemini' requer o pacote google-generativeai. "
+                "Instale com: pip install google-generativeai"
+            ) from exc
+
+        key = self.gemini_api_key or self.api_key
+        genai.configure(api_key=key)
+
+        with open(self.pdf, "rb") as fh:
+            pdf_bytes = fh.read()
+
+        pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+
+        gemini = genai.GenerativeModel(self.gemini_model)
+        response = gemini.generate_content(
+            [
+                {
+                    "mime_type": "application/pdf",
+                    "data": pdf_b64,
+                },
+                (
+                    "Extract the full text of this PDF document exactly as it appears, "
+                    "preserving paragraph and line breaks. "
+                    "Do not summarise, translate, or add any commentary. "
+                    "Return only the extracted text, nothing else."
+                ),
+            ]
+        )
+
+        return response.text
+
+    def _build_full_text_from_gemini(self) -> str:
+        raw = self._extract_text_gemini()
+        full_text = ""
+        offsets = []
+
+        for line in raw.splitlines():
+            text = line.strip()
+            if not text:
+                continue
+            start = len(full_text)
+            full_text += text + "\n"
+            end = len(full_text)
+
+            offsets.append(
+                {
+                    "text": text,
+                    "start": start,
+                    "end": end,
+                    "size": 12.0,
+                    "font": "",
+                }
+            )
+
+        self.full_text = full_text
+        self.offsets = offsets
+        return full_text
+
     def _detect_threshold(self) -> float:
         sizes = [b["size"] for b in self.offsets]
         avg = sum(sizes) / len(sizes)
@@ -170,8 +251,12 @@ class SectionMiner:
         return sections
 
     def extract_structure(self, return_tokens: bool = False):
-        self.extract_blocks()
-        self.build_full_text()
+        if self.extraction_backend == "gemini":
+            self._build_full_text_from_gemini()
+        else:
+            self.extract_blocks()
+            self.build_full_text()
+
         self.build_sections()
         self.client = LLMClient(api_key=self.api_key, model=self.model, max_tokens=4096)
 
@@ -189,7 +274,6 @@ class SectionMiner:
             )
 
         result, usage = self.client.merge_trees(heading_index)
-
         self._inject_positions(result)
 
         self.structure = result
@@ -281,7 +365,6 @@ class SectionMiner:
             result = {"title": node["title"]}
             if node.get("children"):
                 result["children"] = [extract_titles(child) for child in node["children"]]
-
             if isinstance(result, dict):
                 result = result["title"]
             return result
@@ -320,5 +403,3 @@ class SectionMiner:
 
     def close(self) -> None:
         self.doc.close()
-
-
