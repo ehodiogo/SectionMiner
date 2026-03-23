@@ -4,3 +4,4 @@ langchain-openai
 langchain-text-splitters
 langchain-community
 python-decouple
+google-generativeai
