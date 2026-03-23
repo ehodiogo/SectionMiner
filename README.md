@@ -30,7 +30,8 @@ O fluxo do projeto e:
 ## Instalacao (modo biblioteca)
 
 ```bash
-cd /Users/ehodiogo/PycharmProjects/SectionMiner
+git clone https://github.com/ehodiogo/SectionMiner.git
+cd SectionMiner
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -40,6 +41,12 @@ pip install -e .
 Depois disso, voce pode importar com `from sectionminer import SectionMiner` em qualquer script do ambiente.
 
 Tambem instala a CLI `sectionminer`.
+
+Instalacao direta do PyPI (apos publicacao):
+
+```bash
+pip install sectionminer
+```
 
 ## Configuracao das chaves
 
@@ -70,7 +77,7 @@ Exemplo de construtor com Gemini:
 
 ```python
 miner = SectionMiner(
-    "files/artigo_1.pdf",
+    "files/Artigo_Provatis.pdf",
     api_key=openai_api_key,
     extraction_backend="gemini",
     gemini_api_key=gemini_api_key,
@@ -83,7 +90,7 @@ miner = SectionMiner(
 Arquivo: `test.py` (exemplo usando a biblioteca)
 
 1. Le a chave com `config("OPENAI_API_KEY")`.
-2. Cria `SectionMiner("files/artigo_1.pdf", api_key)`.
+2. Cria `SectionMiner("files/Artigo_Provatis.pdf", api_key)`.
 3. Executa `extract_structure(return_tokens=True)` para obter:
    - arvore de secoes/subsecoes
    - uso de tokens/custo
@@ -134,43 +141,43 @@ Para Gemini, use a API Python (`test_gemini.py` como referencia).
 Extrair estrutura (com LLM):
 
 ```bash
-sectionminer extract files/artigo_1.pdf --tokens --pretty
+sectionminer extract files/Artigo_Provatis.pdf --tokens --pretty
 ```
 
 Extrair estrutura e mostrar custo total da chamada:
 
 ```bash
-sectionminer extract files/artigo_1.pdf --show-cost --pretty
+sectionminer extract files/Artigo_Provatis.pdf --show-cost --pretty
 ```
 
 Extrair estrutura heuristica (sem LLM/OpenAI):
 
 ```bash
-sectionminer extract files/artigo_1.pdf --heuristic-only --pretty
+sectionminer extract files/Artigo_Provatis.pdf --heuristic-only --pretty
 ```
 
 Salvar saida JSON em arquivo:
 
 ```bash
-sectionminer extract files/artigo_1.pdf --heuristic-only --output out.json --pretty
+sectionminer extract files/Artigo_Provatis.pdf --heuristic-only --output out.json --pretty
 ```
 
 Buscar texto de secao por titulo:
 
 ```bash
-sectionminer section-text files/artigo_1.pdf "introducao"
+sectionminer section-text files/Artigo_Provatis.pdf "introducao"
 ```
 
 Buscar texto e mostrar custo total da chamada:
 
 ```bash
-sectionminer section-text files/artigo_1.pdf "introducao" --show-cost
+sectionminer section-text files/Artigo_Provatis.pdf "introducao" --show-cost
 ```
 
 Buscar texto de secao sem LLM (heuristica):
 
 ```bash
-sectionminer section-text files/artigo_1.pdf "introducao" --heuristic-only
+sectionminer section-text files/Artigo_Provatis.pdf "introducao" --heuristic-only
 ```
 
 Observacao: `--show-cost` imprime o resumo de custo no `stderr` (nao polui JSON de saida).
@@ -179,18 +186,18 @@ Observacao: `--show-cost` imprime o resumo de custo no `stderr` (nao polui JSON 
 
 Base de medicao local em `2026-03-21`, com modelo `gpt-4o-mini`, usando os PDFs em `files/`.
 
-- `files/artigo_1.pdf`: 0.736 MB, 21 paginas
+- `files/Artigo_Provatis.pdf`: 0.736 MB, 21 paginas
   - Extracao da estrutura: 2297 tokens, `US$ 0.00047505`
   - Obtencao dos textos das secoes no mesmo processo: `US$ 0.00` adicional (usa offsets locais)
-- `files/artigo_2.pdf`: 0.036 MB, 4 paginas
+- `files/Artigo_Mae.pdf`: 0.036 MB, 4 paginas
   - Extracao da estrutura: 356 tokens, `US$ 0.00005970`
   - Obtencao dos textos das secoes no mesmo processo: `US$ 0.00` adicional
 
 Comando para reproduzir no seu ambiente:
 
 ```bash
-sectionminer extract files/artigo_1.pdf --show-cost --pretty
-sectionminer section-text files/artigo_1.pdf "introducao" --show-cost
+sectionminer extract files/Artigo_Provatis.pdf --show-cost --pretty
+sectionminer section-text files/Artigo_Provatis.pdf "introducao" --show-cost
 ```
 
 ## Funcoes principais da API (`SectionMiner`)
@@ -228,7 +235,7 @@ from decouple import config
 from sectionminer import SectionMiner
 
 api_key = config("OPENAI_API_KEY")
-miner = SectionMiner("files/artigo_1.pdf", api_key)
+miner = SectionMiner("files/Artigo_Provatis.pdf", api_key)
 
 try:
     structure, tokens = miner.extract_structure(return_tokens=True)
@@ -254,7 +261,7 @@ openai_api_key = config("OPENAI_API_KEY")
 gemini_api_key = config("GEMINI_API_KEY")
 
 miner = SectionMiner(
-    "files/artigo_1.pdf",
+    "files/Artigo_Provatis.pdf",
     api_key=openai_api_key,
     extraction_backend="gemini",
     gemini_api_key=gemini_api_key,
