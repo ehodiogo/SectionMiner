@@ -13,3 +13,9 @@ sectionminer.egg-info/dependency_links.txt
 sectionminer.egg-info/entry_points.txt
 sectionminer.egg-info/requires.txt
 sectionminer.egg-info/top_level.txt
+sectionminer/server/__init__.py
+sectionminer/server/app.py
+sectionminer/server/routes.py
+sectionminer/server/static/app.js
+sectionminer/server/static/styles.css
+sectionminer/server/templates/index.html

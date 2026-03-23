@@ -5,3 +5,7 @@ langchain-text-splitters
 langchain-community
 python-decouple
 google-genai
+fastapi
+uvicorn
+python-multipart
+jinja2
