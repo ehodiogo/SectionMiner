@@ -28,7 +28,11 @@ dependencies = [
   "langchain-text-splitters",
   "langchain-community",
   "python-decouple",
-  "google-generativeai",
+  "google-genai",
+  "fastapi",
+  "uvicorn",
+  "python-multipart",
+  "jinja2",
 ]
 
 [project.urls]
@@ -43,4 +47,7 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["sectionminer*"]
+
+[tool.setuptools.package-data]
+"sectionminer.server" = ["templates/*.html", "static/*.js", "static/*.css"]
 

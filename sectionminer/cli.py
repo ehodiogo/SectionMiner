@@ -15,6 +15,12 @@ def _resolve_api_key(cli_api_key: str | None) -> str:
     return config("OPENAI_API_KEY", default="")
 
 
+def _resolve_gemini_api_key(cli_api_key: str | None) -> str:
+    if cli_api_key:
+        return cli_api_key
+    return config("GEMINI_API_KEY", default="")
+
+
 def _write_output(data: Any, output_path: str | None, pretty: bool) -> None:
     text = json.dumps(data, ensure_ascii=False, indent=2 if pretty else None)
     if output_path:
@@ -109,6 +115,28 @@ def _section_text_command(args: argparse.Namespace) -> int:
         miner.close()
 
 
+def _runserver_command(args: argparse.Namespace) -> int:
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise SystemExit("uvicorn nao instalado. Rode: pip install uvicorn") from exc
+
+    from sectionminer.server.app import ServerSettings, create_app
+
+    settings = ServerSettings(
+        api_key=_resolve_api_key(args.api_key),
+        model=args.model,
+        extraction_backend=args.extraction_backend,
+        gemini_api_key=_resolve_gemini_api_key(args.gemini_api_key),
+        gemini_model=args.gemini_model,
+        heuristic_only=args.heuristic_only,
+    )
+
+    app = create_app(settings)
+    uvicorn.run(app, host=args.host, port=args.port, reload=args.reload)
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sectionminer",
@@ -136,6 +164,23 @@ def _build_parser() -> argparse.ArgumentParser:
     section_text.add_argument("--heuristic-only", action="store_true", help="Nao usa LLM; busca na estrutura heuristica")
     section_text.add_argument("--show-cost", action="store_true", help="Mostra custo total da chamada no stderr")
     section_text.set_defaults(func=_section_text_command)
+
+    runserver = subparsers.add_parser("runserver", help="Sobe API FastAPI com interface visual")
+    runserver.add_argument("--host", default="127.0.0.1", help="Host do servidor")
+    runserver.add_argument("--port", type=int, default=8000, help="Porta do servidor")
+    runserver.add_argument("--reload", action="store_true", help="Ativa auto-reload de desenvolvimento")
+    runserver.add_argument("--api-key", help="Chave OpenAI (fallback: OPENAI_API_KEY)")
+    runserver.add_argument("--model", default="gpt-4o-mini", help="Modelo OpenAI")
+    runserver.add_argument(
+        "--extraction-backend",
+        default="pymupdf",
+        choices=SectionMiner.SUPPORTED_BACKENDS,
+        help="Backend de extracao de texto",
+    )
+    runserver.add_argument("--gemini-api-key", help="Chave Gemini (fallback: GEMINI_API_KEY)")
+    runserver.add_argument("--gemini-model", default="gemini-2.0-flash", help="Modelo Gemini")
+    runserver.add_argument("--heuristic-only", action="store_true", help="Nao usa LLM; retorna secoes heuristicas")
+    runserver.set_defaults(func=_runserver_command)
 
     return parser
 

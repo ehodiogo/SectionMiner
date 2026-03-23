@@ -1,9 +1,59 @@
 import re
 import unicodedata
-import base64
 import json
 import fitz
 from sectionminer.client import LLMClient
+
+
+def _normalize_bbox(value) -> list[float] | None:
+    if not value or len(value) != 4:
+        return None
+    return [float(value[0]), float(value[1]), float(value[2]), float(value[3])]
+
+
+def _sanitize_text(text: str) -> str:
+    """Remove control characters that break JSON serialization."""
+    if not isinstance(text, str):
+        return str(text)
+    # Remove control characters except newline, tab, carriage return
+    return "".join(c for c in text if ord(c) >= 32 or c in "\n\t\r")
+
+
+def _extract_json_array_text(raw_text: str) -> str:
+    """Extract the first JSON array-like block from model output."""
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
+    start = text.find("[")
+    if start == -1:
+        return text
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return text[start : idx + 1]
+
+    return text[start:]
 
 
 class SectionMiner:
@@ -96,6 +146,7 @@ class SectionMiner:
                             continue
 
                         text = self._fix_unicode(raw_text)
+                        text = _sanitize_text(text)
                         if self._is_corrupted(text):
                             continue
 
@@ -109,6 +160,7 @@ class SectionMiner:
                                 "size": span["size"],
                                 "font": span["font"],
                                 "page": page_num,
+                                "bbox": _normalize_bbox(span.get("bbox")),
                             }
                         )
 
@@ -131,6 +183,8 @@ class SectionMiner:
                     "end": end,
                     "size": b["size"],
                     "font": b["font"],
+                    "page": b.get("page"),
+                    "bbox": b.get("bbox"),
                 }
             )
 
@@ -140,35 +194,31 @@ class SectionMiner:
 
     def _extract_text_gemini(self) -> list[dict]:
         try:
-            import google.generativeai as genai
+            from google import genai
+            from google.genai import types as genai_types
         except ImportError as exc:
             raise ImportError(
-                "O backend 'gemini' requer o pacote google-generativeai. "
-                "Instale com: pip install google-generativeai"
+                "O backend 'gemini' requer o pacote google-genai. "
+                "Instale com: pip install google-genai"
             ) from exc
 
         key = self.gemini_api_key or self.api_key
-        genai.configure(api_key=key)
+        client = genai.Client(api_key=key)
 
         with open(self.pdf, "rb") as fh:
             pdf_bytes = fh.read()
 
-        pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-
-        gemini = genai.GenerativeModel(self.gemini_model)
-        response = gemini.generate_content(
-            [
-                {
-                    "mime_type": "application/pdf",
-                    "data": pdf_b64,
-                },
+        response = client.models.generate_content(
+            model=self.gemini_model,
+            contents=[
+                genai_types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
                 """
                 Analyse this PDF and return a JSON array of text spans.
                 For each line of text, return an object with:
                 - "text": the exact text content
-                - "size": estimated font size as a float (body text ≈ 10-12, 
-                          headings ≈ 14-18, titles ≈ 18+)
-                - "font": inferred font style — use "Bold" if the text appears
+                - "size": estimated font size as a float (body text ~= 10-12,
+                          headings ~= 14-18, titles ~= 18+)
+                - "font": inferred font style - use "Bold" if the text appears
                           bold, "Italic" if italic, "BoldItalic" if both,
                           or "Regular" otherwise
                 - "page": page number (0-indexed)
@@ -176,19 +226,62 @@ class SectionMiner:
                 Rules:
                 - Skip empty lines, page numbers, headers/footers.
                 - Preserve document order exactly.
-                - Return raw JSON array only, no markdown fences, no explanation.
-
-                Example output:
-                [
-                  {"text": "1. Introduction", "size": 14.0, "font": "Bold", "page": 0},
-                  {"text": "This paper presents...", "size": 11.0, "font": "Regular", "page": 0}
-                ]
+                - Return raw JSON array only.
                 """,
-            ]
+            ],
+            config=genai_types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "text": {"type": "string"},
+                            "size": {"type": "number"},
+                            "font": {"type": "string"},
+                            "page": {"type": "integer"},
+                            "bbox": {
+                                "type": "array",
+                                "items": {"type": "number"},
+                                "minItems": 4,
+                                "maxItems": 4,
+                            },
+                        },
+                        "required": ["text", "size", "font", "page"],
+                    },
+                },
+            ),
         )
 
-        raw = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        return json.loads(raw)
+        raw = getattr(response, "text", "") or ""
+        raw = raw.strip()
+
+        if not raw:
+            # Fallback for SDK responses where text is fragmented in candidate parts.
+            chunks: list[str] = []
+            for candidate in getattr(response, "candidates", []) or []:
+                content = getattr(candidate, "content", None)
+                if not content:
+                    continue
+                for part in getattr(content, "parts", []) or []:
+                    piece = getattr(part, "text", None)
+                    if piece:
+                        chunks.append(piece)
+            raw = "\n".join(chunks).strip()
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError as e:
+            candidate = _extract_json_array_text(raw)
+            raw_sanitized = _sanitize_text(candidate)
+            try:
+                parsed = json.loads(raw_sanitized)
+                return parsed if isinstance(parsed, list) else []
+            except json.JSONDecodeError as inner:
+                raise ValueError(
+                    "Failed to parse Gemini response as JSON. "
+                    f"Original error: {e}. Fallback error: {inner}."
+                ) from inner
 
     def _build_full_text_from_gemini(self) -> str:
         spans = self._extract_text_gemini()
@@ -197,6 +290,7 @@ class SectionMiner:
 
         for span in spans:
             text = span.get("text", "").strip()
+            text = _sanitize_text(text)
             if not text:
                 continue
 
@@ -211,6 +305,8 @@ class SectionMiner:
                     "end": end,
                     "size": float(span.get("size", 12.0)),
                     "font": span.get("font", "Regular"),
+                    "page": int(span.get("page", -1)),
+                    "bbox": _normalize_bbox(span.get("bbox")),
                 }
             )
 
@@ -417,6 +513,44 @@ class SectionMiner:
         if not sec:
             return None, None
         return sec["start"], sec["end"]
+
+    def get_section_locations(self, title: str, max_spans: int = 300) -> list[dict]:
+        sec = self.get_section(title)
+        if not sec:
+            return []
+
+        start = sec["start"]
+        end = sec["end"]
+        matches: list[dict] = []
+
+        for offset in self.offsets or []:
+            o_start = offset.get("start")
+            o_end = offset.get("end")
+            if o_start is None or o_end is None:
+                continue
+            if o_end <= start or o_start >= end:
+                continue
+
+            page = offset.get("page")
+            bbox = offset.get("bbox")
+            if page is None or page < 0:
+                continue
+            if not bbox:
+                continue
+
+            matches.append(
+                {
+                    "page": int(page),
+                    "bbox": [float(v) for v in bbox],
+                    "text": offset.get("text", ""),
+                    "start_char": int(o_start),
+                    "end_char": int(o_end),
+                }
+            )
+            if len(matches) >= max_spans:
+                break
+
+        return matches
 
     def close(self) -> None:
         self.doc.close()
