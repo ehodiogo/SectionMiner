@@ -1,45 +1,74 @@
 MERGE_TREE_PROMPT = """
-You are an expert in academic document structure.
+You are an expert in academic document structure analysis.
 
 ## Task
-You will receive a flat list of headings extracted from a document.
-Each heading has a title, a level (1 = section, 2 = subsection), a start_anchor,
-and an end_anchor. Organise them into a single two-level hierarchy tree.
+You will receive a flat list of headings extracted from a PDF.
+Each heading has: title, level (1 = section, 2 = subsection),
+start_anchor, and end_anchor.
+Organise them into a single two-level hierarchy tree.
 
-## Mandatory rules
-1. Every node must contain exactly: "title", "children".
-2. Maximum depth: 2 levels (sections -> subsections).
-3. Discard any node whose title is a full paragraph, a sentence longer than
-   100 characters, a page number, a figure/table caption, or a standalone
-   bullet point.
-4. Merge semantically equivalent headings (e.g. "Methodology" and
-   "2. Method" -> single node with the more complete title).
-5. Preserve canonical academic order when possible:
-   Abstract -> Introduction -> Related Work -> Methodology -> Results ->
-   Discussion -> Conclusion -> References.
-6. Within each section, order subsections by their start_anchor appearance
-   order in the document.
-7. Do not duplicate nodes; do not omit any valid section present in the input.
-8. Do NOT include start_anchor, end_anchor, or any position field in the
-   output - positions are managed externally.
+## Rules
 
-## Output format - raw JSON only, no markdown fences, no explanation
+### Structure
+1. Every node must contain exactly the keys "title" and "children". No other keys.
+2. Maximum depth is 2 levels: top-level sections and their subsections.
+3. If a heading cannot be clearly classified as level 1 or level 2,
+   treat it as level 1.
+
+### Filtering — discard a heading if it matches ANY of the following
+4. The title is longer than 100 characters.
+5. The title ends with a period, colon, or semicolon (likely a sentence).
+6. The title is a standalone number, page number, or Roman numeral.
+7. The title starts with "Figure", "Table", "Fig.", "Tab." or equivalent
+   in any language.
+8. The title is clearly a bullet point or list item fragment.
+9. If discarding a heading would leave a section with no children,
+   keep the section node itself but with an empty children array.
+
+### Merging
+10. Merge headings that refer to the same section
+    (e.g. "Methodology" and "2. Methodology" -> one node).
+    When merging, prefer the title that has an explicit section number;
+    if neither has a number, prefer the longer, more descriptive title.
+11. Do not create duplicate nodes.
+
+### Ordering
+12. Preserve the original document order of sections as indicated by
+    start_anchor positions. Do NOT reorder sections to match a canonical
+    academic template.
+13. Within each section, order subsections by their start_anchor
+    appearance order in the document.
+
+### Output
+14. Return raw JSON only — no markdown fences, no explanation, no comments.
+15. All string values must be valid JSON (escape internal quotes with \").
+16. Do not include start_anchor, end_anchor, or any position field in the
+    output — positions are injected externally.
+
+## Output format
 {{
   "title": "Document",
   "children": [
-	{{
-	  "title": "<Section>",
-	  "children": [
-		{{
-		  "title": "<Subsection>",
-		  "children": []
-		}}
-	  ]
-	}}
+    {{
+      "title": "<Section A>",
+      "children": []
+    }},
+    {{
+      "title": "<Section B>",
+      "children": [
+        {{
+          "title": "<Subsection B.1>",
+          "children": []
+        }},
+        {{
+          "title": "<Subsection B.2>",
+          "children": []
+        }}
+      ]
+    }}
   ]
 }}
 
 ## Input headings
 {trees}
 """
-
