@@ -89,39 +89,23 @@ function drawHighlights() {
   overlay.innerHTML = "";
 
   if (!state.selectedSection || !state.viewport) {
-    console.log("No section selected or viewport not ready");
     return;
   }
 
   const locations = state.selectedSection.locations || [];
-  console.log(
-    `[Highlight] Section: "${state.selectedSection.title}"`,
-    `| Current page (viewer): ${state.pageNumber}`,
-    `| Total locations: ${locations.length}`,
-    `| Locations:`,
-    locations
-  );
-
   const pageLocations = locations.filter((item) => item.page === state.pageNumber - 1);
-  console.log(`[Highlight] Matches for page ${state.pageNumber - 1}: ${pageLocations.length}`);
-
-  if (pageLocations.length === 0) {
-    console.log(`[Highlight] No highlights on this page. Section appears on pages:`, 
-      locations.map(l => l.page + 1).filter((v, i, a) => a.indexOf(v) === i));
-    return;
-  }
+  if (pageLocations.length === 0) return;
 
   for (const location of pageLocations) {
+    if (!Array.isArray(location.bbox) || location.bbox.length !== 4) {
+      continue;
+    }
     const [x0, y0, x1, y1] = location.bbox;
-    const left = x0 * state.viewport.scale;
-    const top = y0 * state.viewport.scale;
-    const width = (x1 - x0) * state.viewport.scale;
-    const height = (y1 - y0) * state.viewport.scale;
-
-    console.log(
-      `[Highlight] Creating box: left=${left.toFixed(1)}, top=${top.toFixed(1)}, ` +
-      `width=${width.toFixed(1)}, height=${height.toFixed(1)}, scale=${state.viewport.scale}`
-    );
+    const [vx0, vy0, vx1, vy1] = state.viewport.convertToViewportRectangle([x0, y0, x1, y1]);
+    const left = Math.min(vx0, vx1);
+    const top = Math.min(vy0, vy1);
+    const width = Math.abs(vx1 - vx0);
+    const height = Math.abs(vy1 - vy0);
 
     const box = document.createElement("div");
     box.className = "highlight-box";
@@ -152,15 +136,11 @@ function buildSectionCard(section, index) {
     document.querySelectorAll(".section-card").forEach((el) => el.classList.remove("active"));
     card.classList.add("active");
 
-    console.log(`[Click] Selected section: "${section.title}"`);
-
     const firstLocation = (section.locations || [])[0];
     if (firstLocation && state.pdfDoc) {
-      console.log(`[Click] Jumping to page ${firstLocation.page + 1}`);
       state.pageNumber = firstLocation.page + 1;
       await renderPage();
     } else {
-      console.log(`[Click] No locations found, just drawing highlights on current page`);
       drawHighlights();
     }
   });

@@ -20,14 +20,12 @@ class ServerSettings:
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
-UPLOAD_DIR = BASE_DIR / "uploads"
 
 
 def create_app(settings: ServerSettings | None = None) -> FastAPI:
     app = FastAPI(title="SectionMiner API", version="0.1")
     app.state.settings = settings or ServerSettings()
     app.state.templates_dir = TEMPLATES_DIR
-    app.state.upload_dir = UPLOAD_DIR
     app.state.jobs = {}
 
     app.include_router(router)

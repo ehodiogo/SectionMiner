@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+import os
+import tempfile
 import uuid
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from sectionminer import SectionMiner
@@ -47,11 +48,6 @@ def _cleanup_old_jobs(request: Request, ttl_hours: int = 6) -> None:
     stale_ids = [job_id for job_id, data in jobs.items() if data["created_at"] < cutoff]
 
     for job_id in stale_ids:
-        path = jobs[job_id]["pdf_path"]
-        try:
-            Path(path).unlink(missing_ok=True)
-        except OSError:
-            pass
         del jobs[job_id]
 
 
@@ -68,29 +64,30 @@ async def extract_sections(request: Request, file: UploadFile = File(...)) -> di
 
     _cleanup_old_jobs(request)
 
-    upload_dir = request.app.state.upload_dir
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
     job_id = str(uuid.uuid4())
-    pdf_path = upload_dir / f"{job_id}.pdf"
 
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Arquivo vazio.")
-    pdf_path.write_bytes(content)
+
+    temp_pdf = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    temp_pdf.write(content)
+    temp_pdf_path = temp_pdf.name
+    temp_pdf.close()
 
     settings = request.app.state.settings
-    miner = SectionMiner(
-        str(pdf_path),
-        api_key=settings.api_key,
-        model=settings.model,
-        extraction_backend=settings.extraction_backend,
-        gemini_api_key=settings.gemini_api_key,
-        gemini_model=settings.gemini_model,
-    )
-
+    miner = None
     usage = None
     try:
+        miner = SectionMiner(
+            temp_pdf_path,
+            api_key=settings.api_key,
+            model=settings.model,
+            extraction_backend=settings.extraction_backend,
+            gemini_api_key=settings.gemini_api_key,
+            gemini_model=settings.gemini_model,
+        )
+
         if settings.heuristic_only:
             miner.extract_blocks()
             miner.build_full_text()
@@ -111,9 +108,11 @@ async def extract_sections(request: Request, file: UploadFile = File(...)) -> di
             start = node.get("start_char")
             end = node.get("end_char")
             text = ""
+            locations = []
             if start is not None and end is not None:
                 text = miner.get_full_text()[start:end]
                 text = _sanitize_text(text)
+                locations = miner.get_locations_by_char_range(start, end)
             sections.append(
                 {
                     "title": title,
@@ -121,12 +120,13 @@ async def extract_sections(request: Request, file: UploadFile = File(...)) -> di
                     "start_char": start,
                     "end_char": end,
                     "text": text,
-                    "locations": miner.get_section_locations(title),
+                    "locations": locations,
                 }
             )
 
         request.app.state.jobs[job_id] = {
-            "pdf_path": str(pdf_path),
+            "pdf_bytes": content,
+            "filename": file.filename,
             "created_at": datetime.now(timezone.utc),
         }
 
@@ -157,25 +157,24 @@ async def extract_sections(request: Request, file: UploadFile = File(...)) -> di
             "sections": sections,
         }
     except HTTPException:
-        pdf_path.unlink(missing_ok=True)
         raise
     except Exception as exc:  # pragma: no cover
-        pdf_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Falha ao processar PDF: {exc}") from exc
     finally:
-        miner.close()
+        if miner is not None:
+            miner.close()
+        try:
+            os.unlink(temp_pdf_path)
+        except OSError:
+            pass
 
 
 @router.get("/api/files/{job_id}")
-def serve_pdf(request: Request, job_id: str) -> FileResponse:
+def serve_pdf(request: Request, job_id: str) -> Response:
     data = request.app.state.jobs.get(job_id)
     if not data:
         raise HTTPException(status_code=404, detail="Documento nao encontrado ou expirado.")
 
-    pdf_path = Path(data["pdf_path"])
-    if not pdf_path.exists():
-        raise HTTPException(status_code=404, detail="Arquivo nao encontrado no servidor.")
-
-    return FileResponse(pdf_path, media_type="application/pdf", filename=pdf_path.name)
+    return Response(content=data["pdf_bytes"], media_type="application/pdf")
 
 

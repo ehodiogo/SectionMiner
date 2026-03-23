@@ -187,6 +187,7 @@ Observacao: `--show-cost` imprime o resumo de custo no `stderr` (nao polui JSON 
 
 Agora a CLI tambem sobe uma API com interface visual para upload do PDF, lista de secoes e destaque no documento.
 O painel mostra, em tempo real: backend utilizado (PyMuPDF ou Gemini), paginas, quantidade de secoes, tokens e custo total.
+O arquivo enviado e processado em arquivo temporario e removido ao final da extracao (sem acumular PDFs em disco).
 
 Subir servidor local:
 

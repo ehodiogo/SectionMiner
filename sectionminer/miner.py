@@ -253,11 +253,29 @@ class SectionMiner:
             ),
         )
 
+        # 1) Structured response when response_schema is honored
+        parsed_response = getattr(response, "parsed", None)
+        if parsed_response:
+            if isinstance(parsed_response, list):
+                return parsed_response
+            if isinstance(parsed_response, dict) and isinstance(parsed_response.get("parsed"), list):
+                return parsed_response["parsed"]
+
+        # 2) Parsed parts inside candidates
+        for candidate in getattr(response, "candidates", []) or []:
+            content = getattr(candidate, "content", None)
+            if not content:
+                continue
+            for part in getattr(content, "parts", []) or []:
+                part_parsed = getattr(part, "parsed", None)
+                if isinstance(part_parsed, list):
+                    return part_parsed
+
+        # 3) Text-based fallback
         raw = getattr(response, "text", "") or ""
         raw = raw.strip()
 
         if not raw:
-            # Fallback for SDK responses where text is fragmented in candidate parts.
             chunks: list[str] = []
             for candidate in getattr(response, "candidates", []) or []:
                 content = getattr(candidate, "content", None)
@@ -268,12 +286,13 @@ class SectionMiner:
                     if piece:
                         chunks.append(piece)
             raw = "\n".join(chunks).strip()
+
         try:
             parsed = json.loads(raw)
             return parsed if isinstance(parsed, list) else []
         except json.JSONDecodeError as e:
-            candidate = _extract_json_array_text(raw)
-            raw_sanitized = _sanitize_text(candidate)
+            candidate_text = _extract_json_array_text(raw)
+            raw_sanitized = _sanitize_text(candidate_text)
             try:
                 parsed = json.loads(raw_sanitized)
                 return parsed if isinstance(parsed, list) else []
@@ -514,13 +533,7 @@ class SectionMiner:
             return None, None
         return sec["start"], sec["end"]
 
-    def get_section_locations(self, title: str, max_spans: int = 300) -> list[dict]:
-        sec = self.get_section(title)
-        if not sec:
-            return []
-
-        start = sec["start"]
-        end = sec["end"]
+    def get_locations_by_char_range(self, start: int, end: int, max_spans: int = 300) -> list[dict]:
         matches: list[dict] = []
 
         for offset in self.offsets or []:
@@ -551,6 +564,12 @@ class SectionMiner:
                 break
 
         return matches
+
+    def get_section_locations(self, title: str, max_spans: int = 300) -> list[dict]:
+        sec = self.get_section(title)
+        if not sec:
+            return []
+        return self.get_locations_by_char_range(sec["start"], sec["end"], max_spans=max_spans)
 
     def close(self) -> None:
         self.doc.close()
