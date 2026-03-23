@@ -1,9 +1,8 @@
 import re
 import unicodedata
 import base64
-
+import json
 import fitz
-
 from sectionminer.client import LLMClient
 
 
@@ -139,9 +138,9 @@ class SectionMiner:
         self.offsets = offsets
         return full_text
 
-    def _extract_text_gemini(self) -> str:
+    def _extract_text_gemini(self) -> list[dict]:
         try:
-            import google.generativeai as genai  # type: ignore
+            import google.generativeai as genai
         except ImportError as exc:
             raise ImportError(
                 "O backend 'gemini' requer o pacote google-generativeai. "
@@ -163,26 +162,44 @@ class SectionMiner:
                     "mime_type": "application/pdf",
                     "data": pdf_b64,
                 },
-                (
-                    "Extract the full text of this PDF document exactly as it appears, "
-                    "preserving paragraph and line breaks. "
-                    "Do not summarise, translate, or add any commentary. "
-                    "Return only the extracted text, nothing else."
-                ),
+                """
+                Analyse this PDF and return a JSON array of text spans.
+                For each line of text, return an object with:
+                - "text": the exact text content
+                - "size": estimated font size as a float (body text ≈ 10-12, 
+                          headings ≈ 14-18, titles ≈ 18+)
+                - "font": inferred font style — use "Bold" if the text appears
+                          bold, "Italic" if italic, "BoldItalic" if both,
+                          or "Regular" otherwise
+                - "page": page number (0-indexed)
+
+                Rules:
+                - Skip empty lines, page numbers, headers/footers.
+                - Preserve document order exactly.
+                - Return raw JSON array only, no markdown fences, no explanation.
+
+                Example output:
+                [
+                  {"text": "1. Introduction", "size": 14.0, "font": "Bold", "page": 0},
+                  {"text": "This paper presents...", "size": 11.0, "font": "Regular", "page": 0}
+                ]
+                """,
             ]
         )
 
-        return response.text
+        raw = response.text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        return json.loads(raw)
 
     def _build_full_text_from_gemini(self) -> str:
-        raw = self._extract_text_gemini()
+        spans = self._extract_text_gemini()
         full_text = ""
         offsets = []
 
-        for line in raw.splitlines():
-            text = line.strip()
+        for span in spans:
+            text = span.get("text", "").strip()
             if not text:
                 continue
+
             start = len(full_text)
             full_text += text + "\n"
             end = len(full_text)
@@ -192,8 +209,8 @@ class SectionMiner:
                     "text": text,
                     "start": start,
                     "end": end,
-                    "size": 12.0,
-                    "font": "",
+                    "size": float(span.get("size", 12.0)),
+                    "font": span.get("font", "Regular"),
                 }
             )
 
