@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sectionminer
-Version: 0.1.4
+Version: 0.1.5
 Summary: Extract sections and subsections from academic PDFs
 Author: SectionMiner Contributors
 License-Expression: MIT
@@ -31,251 +31,211 @@ Requires-Dist: python-multipart
 Requires-Dist: jinja2
 Dynamic: license-file
 
-# SectionMiner
+<div align="center">
 
-Biblioteca Python para extrair secoes e subsecoes de PDFs academicos com heuristicas de layout + consolidacao por LLM.
+<br/>
 
-Suporta dois backends de extracao de texto:
-
-- `pymupdf` (local, via spans/layout do PDF)
-- `gemini` (OCR/extracao via Google Gemini)
-
-Em ambos os casos, a consolidacao final da arvore de secoes ainda e feita por OpenAI no estado atual do projeto.
-
-## Visao geral
-
-O fluxo do projeto e:
-
-1. Ler spans do PDF com fonte/tamanho (`PyMuPDF`).
-2. Detectar titulos provaveis (heading).
-3. Montar secoes com intervalos de caracteres (`start`, `end`).
-4. Enviar um indice de headings para LLM consolidar a arvore final.
-5. Buscar texto de uma secao pelo titulo.
-
-## Requisitos
-
-- Python 3.10+
-- Dependencias em `requirements.txt`
-- SDK Gemini: `google-genai` (substitui `google-generativeai`)
-- Chaves de API:
-  - `OPENAI_API_KEY` (obrigatoria para consolidacao LLM)
-  - `GEMINI_API_KEY` (obrigatoria quando usar `extraction_backend="gemini"`)
-
-## Instalacao (modo biblioteca)
-
-```bash
-git clone https://github.com/ehodiogo/SectionMiner.git
-cd SectionMiner
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
+```
+███████╗███████╗ ██████╗████████╗██╗ ██████╗ ███╗   ██╗
+██╔════╝██╔════╝██╔════╝╚══██╔══╝██║██╔═══██╗████╗  ██║
+███████╗█████╗  ██║        ██║   ██║██║   ██║██╔██╗ ██║
+╚════██║██╔══╝  ██║        ██║   ██║██║   ██║██║╚██╗██║
+███████║███████╗╚██████╗   ██║   ██║╚██████╔╝██║ ╚████║
+╚══════╝╚══════╝ ╚═════╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
+███╗   ███╗██╗███╗   ██╗███████╗██████╗
+████╗ ████║██║████╗  ██║██╔════╝██╔══██╗
+██╔████╔██║██║██╔██╗ ██║█████╗  ██████╔╝
+██║╚██╔╝██║██║██║╚██╗██║██╔══╝  ██╔══██╗
+██║ ╚═╝ ██║██║██║ ╚████║███████╗██║  ██║
+╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝
 ```
 
-Depois disso, voce pode importar com `from sectionminer import SectionMiner` em qualquer script do ambiente.
+**Extract sections and subsections from academic PDFs — powered by layout heuristics and LLM consolidation.**
 
-Tambem instala a CLI `sectionminer`.
+<br/>
 
-Instalacao direta do PyPI (apos publicacao):
+[![PyPI version](https://img.shields.io/pypi/v/sectionminer?style=flat-square&color=0a0a0a&labelColor=f5f5f5)](https://pypi.org/project/sectionminer/)
+[![Python](https://img.shields.io/pypi/pyversions/sectionminer?style=flat-square&color=0a0a0a&labelColor=f5f5f5)](https://pypi.org/project/sectionminer/)
+[![License](https://img.shields.io/github/license/ehodiogo/SectionMiner?style=flat-square&color=0a0a0a&labelColor=f5f5f5)](LICENSE)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/sectionminer?style=flat-square&color=0a0a0a&labelColor=f5f5f5)](https://pypi.org/project/sectionminer/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg?style=flat-square)](https://github.com/psf/black)
+
+<br/>
+
+[**Quickstart**](#-quickstart) · [**Installation**](#-installation) · [**CLI**](#-cli) · [**API Reference**](#-api-reference) · [**Web UI**](#-web-ui) · [**Examples**](#-examples)
+
+<br/>
+
+</div>
+
+---
+
+## Overview
+
+**SectionMiner** is a Python library for extracting structured sections and subsections from academic PDFs. It combines local layout analysis (font sizes, spans) with LLM-based tree consolidation to reliably identify section boundaries — even in complex, multi-column, or OCR-heavy documents.
+
+```
+PDF File  →  Text Extraction  →  Heading Detection  →  LLM Consolidation  →  Structured Tree
+              (PyMuPDF / Gemini)   (font heuristics)    (OpenAI gpt-4o-mini)
+```
+
+### Extraction Backends
+
+| Backend | Description | Best For |
+|---------|-------------|----------|
+| `pymupdf` *(default)* | Local text extraction using PDF layout spans | Clean, text-native PDFs |
+| `gemini` | OCR and extraction via Google Gemini | Scanned docs, complex layouts |
+
+> In both cases, LLM consolidation of the final section tree is handled by **OpenAI**.
+
+---
+
+## ✦ Quickstart
+
+```python
+import json
+from sectionminer import SectionMiner
+
+miner = SectionMiner("paper.pdf", api_key="sk-...")
+
+try:
+    structure, usage = miner.extract_structure(return_tokens=True)
+
+    print(json.dumps(structure, indent=2, ensure_ascii=False))
+    print(usage)  # { prompt_tokens, completion_tokens, cost_usd, ... }
+
+    # Get text from a specific section
+    print(miner.get_section_text("introduction"))
+
+    # Or slice by character offsets
+    start, end = miner.get_section_start_and_end_chars("introduction")
+    print(miner.get_full_text()[start:end])
+finally:
+    miner.close()
+```
+
+---
+
+## ⬇ Installation
+
+**From PyPI:**
 
 ```bash
 pip install sectionminer
 ```
 
-## Configuracao das chaves
-
-Os scripts usam `python-decouple` para ler variaveis de ambiente.
-
-Opcao 1 (rapida, terminal atual):
+**From source:**
 
 ```bash
-export OPENAI_API_KEY="sua-chave-aqui"
-export GEMINI_API_KEY="sua-chave-aqui"
+git clone https://github.com/ehodiogo/SectionMiner.git
+cd SectionMiner
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
 ```
 
-Opcao 2 (`.env` na raiz do projeto):
+### Requirements
+
+- Python **3.10+**
+- `OPENAI_API_KEY` — required for LLM consolidation
+- `GEMINI_API_KEY` — required only when using `extraction_backend="gemini"`
+
+### API Keys
+
+Via environment variable:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+export GEMINI_API_KEY="..."      # optional, Gemini backend only
+```
+
+Or via `.env` in your project root:
 
 ```env
-OPENAI_API_KEY=sua-chave-aqui
-GEMINI_API_KEY=sua-chave-aqui
+OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=...
 ```
 
-Se voce nao for usar Gemini, pode omitir `GEMINI_API_KEY`.
+---
 
-## Backends de extracao
+## ⌨ CLI
 
-- `pymupdf` (padrao): extrai texto a partir do layout interno do PDF.
-- `gemini`: envia o PDF para o Gemini e usa o texto retornado para o pipeline.
-
-Exemplo de construtor com Gemini:
-
-```python
-miner = SectionMiner(
-    "files/Artigo_Provatis.pdf",
-    api_key=openai_api_key,
-    extraction_backend="gemini",
-    gemini_api_key=gemini_api_key,
-    gemini_model="gemini-2.5-flash-lite",
-)
-```
-
-## Fluxo principal (o que o `test.py` faz)
-
-Arquivo: `test.py` (exemplo usando a biblioteca)
-
-1. Le a chave com `config("OPENAI_API_KEY")`.
-2. Cria `SectionMiner("files/Artigo_Provatis.pdf", api_key)`.
-3. Executa `extract_structure(return_tokens=True)` para obter:
-   - arvore de secoes/subsecoes
-   - uso de tokens/custo
-4. Consulta uma secao (ex.: `introducao`) por offsets com `get_section_start_and_end_chars`.
-5. Recupera texto completo com `get_full_text()` e fatia por `[start:end]`.
-6. Reexecuta pipeline manual (`extract_blocks`, `build_full_text`, `build_sections`) e imprime secoes com `get_sections()` e `get_section_text()`.
-7. Fecha o PDF com `close()` no `finally`.
-
-Executar:
-
-```bash
-python3 test.py
-```
-
-Exemplo alternativo (arquivo dedicado em `examples/`):
-
-```bash
-python3 examples/basic_usage.py
-```
-
-## Fluxo com Gemini (o que o `test_gemini.py` faz)
-
-Arquivo: `test_gemini.py`
-
-1. Le `OPENAI_API_KEY` e `GEMINI_API_KEY`.
-2. Cria `SectionMiner(..., extraction_backend="gemini", gemini_api_key=...)`.
-3. Executa `extract_structure(return_tokens=True)` e imprime `usage`.
-4. Consulta secao por offsets com `get_section_start_and_end_chars`.
-5. Lista secoes com `get_sections()` e imprime com `get_section_text()`.
-
-Executar:
-
-```bash
-python3 test_gemini.py
-```
-
-## CLI inicial
-
-Comando raiz:
+SectionMiner installs a `sectionminer` command.
 
 ```bash
 sectionminer --help
 ```
 
-Observacao importante: os comandos `extract` e `section-text` usam backend `pymupdf` (ou `--heuristic-only`).
-Para usar `extraction_backend="gemini"` via CLI, use `sectionminer runserver --extraction-backend gemini`.
-
-Extrair estrutura (com LLM):
+### Extract section structure
 
 ```bash
-sectionminer extract files/Artigo_Provatis.pdf --tokens --pretty
+# Full extraction with LLM consolidation
+sectionminer extract paper.pdf --tokens --pretty
+
+# Heuristic-only (no LLM / no API key needed)
+sectionminer extract paper.pdf --heuristic-only --pretty
+
+# Show cost estimate
+sectionminer extract paper.pdf --show-cost --pretty
+
+# Save output to JSON
+sectionminer extract paper.pdf --output out.json --pretty
 ```
 
-Extrair estrutura e mostrar custo total da chamada:
+### Get text of a specific section
 
 ```bash
-sectionminer extract files/Artigo_Provatis.pdf --show-cost --pretty
+sectionminer section-text paper.pdf "introduction"
+
+# With cost breakdown (printed to stderr, JSON unaffected)
+sectionminer section-text paper.pdf "introduction" --show-cost
+
+# Without LLM
+sectionminer section-text paper.pdf "introduction" --heuristic-only
 ```
 
-Extrair estrutura heuristica (sem LLM/OpenAI):
+> **Note:** `--show-cost` outputs cost info to `stderr` so it never pollutes JSON output.
+
+---
+
+## 🌐 Web UI
+
+SectionMiner includes a FastAPI-powered visual interface with real-time PDF rendering and section highlighting.
 
 ```bash
-sectionminer extract files/Artigo_Provatis.pdf --heuristic-only --pretty
-```
-
-Salvar saida JSON em arquivo:
-
-```bash
-sectionminer extract files/Artigo_Provatis.pdf --heuristic-only --output out.json --pretty
-```
-
-Buscar texto de secao por titulo:
-
-```bash
-sectionminer section-text files/Artigo_Provatis.pdf "introducao"
-```
-
-Buscar texto e mostrar custo total da chamada:
-
-```bash
-sectionminer section-text files/Artigo_Provatis.pdf "introducao" --show-cost
-```
-
-Buscar texto de secao sem LLM (heuristica):
-
-```bash
-sectionminer section-text files/Artigo_Provatis.pdf "introducao" --heuristic-only
-```
-
-Observacao: `--show-cost` imprime o resumo de custo no `stderr` (nao polui JSON de saida).
-
-## API web visual (FastAPI)
-
-Agora a CLI tambem sobe uma API com interface visual para upload do PDF, lista de secoes e destaque no documento.
-O painel mostra, em tempo real: backend utilizado (PyMuPDF ou Gemini), paginas, quantidade de secoes, tokens e custo total.
-O arquivo enviado e processado em arquivo temporario e removido ao final da extracao (sem acumular PDFs em disco).
-
-Subir servidor local:
-
-```bash
+# Start with default PyMuPDF backend
 sectionminer runserver --host 127.0.0.1 --port 8000 --reload
-```
 
-Com backend Gemini para extracao:
-
-```bash
+# Use Gemini for extraction
 sectionminer runserver --extraction-backend gemini --gemini-model gemini-2.0-flash
-```
 
-Modo sem LLM (somente heuristica local):
-
-```bash
+# Heuristic-only (no LLM)
 sectionminer runserver --heuristic-only
 ```
 
-Depois abra no navegador:
+Open in your browser: **http://127.0.0.1:8000**
 
-```text
-http://127.0.0.1:8000
-```
+**Features:**
+- Upload any PDF and view extracted sections in real time
+- Click a section to highlight its exact location in the PDF viewer
+- Dashboard shows: backend used, page count, section count, token usage, cost
 
-### Highlight visual no PDF
+### API Endpoints
 
-Quando voce seleciona uma secao no painel da direita, a area correspondente no PDF e automaticamente destacada com uma caixa verde.
-O destaque mostra exatamente onde cada secao foi encontrada no documento, com suporte para multiplos trechos em diferentes paginas.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Visual UI |
+| `POST` | `/api/extract` | Upload PDF, returns structured JSON |
+| `GET` | `/api/files/{job_id}` | Stream the uploaded PDF for rendering |
 
-A funcionalidade requer que o PDF tenha bom suporte de spans/layout (PyMuPDF extrai os dados).
-Para PDFs com layout complexo ou OCR, pode haver algumas imprecisoes.
-
-Para debugar highlights, abra o console do navegador (F12 > Console) enquanto seleciona secoes - vera logs detalhados do calculo das posicoes.
-
-### Endpoints da API
-
-- `GET /`: UI visual com PDF a esquerda e secoes extraidas a direita.
-- `POST /api/extract`: upload de arquivo PDF (`multipart/form-data`, campo `file`).
-- `GET /api/files/{job_id}`: stream do PDF armazenado temporariamente para renderizacao no viewer.
-
-Smoke test rapido (sem depender de chave de API):
-
-```bash
-python3 examples/api_smoke_test.py
-```
-
-
-Resposta de `POST /api/extract` (resumo):
+<details>
+<summary><strong>Sample <code>POST /api/extract</code> response</strong></summary>
 
 ```json
 {
-  "job_id": "uuid",
-  "filename": "meu_arquivo.pdf",
-  "pdf_url": "/api/files/uuid",
+  "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "filename": "paper.pdf",
+  "pdf_url": "/api/files/3fa85f64-...",
   "extraction_backend": "pymupdf",
   "heuristic_only": false,
   "pages": 10,
@@ -287,113 +247,124 @@ Resposta de `POST /api/extract` (resumo):
     "total_tokens": 2250,
     "cost_usd": 0.00046
   },
-  "usage": {
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "cost_usd": 0.0
-  },
-  "tree": {"title": "Document", "children": []},
   "sections": [
     {
-      "title": "1. Introducao",
+      "title": "1. Introduction",
       "level": 1,
       "start_char": 0,
       "end_char": 1200,
       "text": "...",
       "locations": [
-        {"page": 0, "bbox": [72.0, 120.0, 380.0, 138.0], "text": "..."}
+        { "page": 0, "bbox": [72.0, 120.0, 380.0, 138.0], "text": "..." }
       ]
     }
   ]
 }
 ```
 
-## Exemplos de custo (extracao + obtencao dos textos)
+</details>
 
-Base de medicao local em `2026-03-21`, com modelo `gpt-4o-mini`, usando os PDFs em `files/`.
+---
 
-- `files/Artigo_Provatis.pdf`: 0.736 MB, 21 paginas
-  - Extracao da estrutura: 2297 tokens, `US$ 0.00047505`
-  - Obtencao dos textos das secoes no mesmo processo: `US$ 0.00` adicional (usa offsets locais)
-- `files/Artigo_Mae.pdf`: 0.036 MB, 4 paginas
-  - Extracao da estrutura: 356 tokens, `US$ 0.00005970`
-  - Obtencao dos textos das secoes no mesmo processo: `US$ 0.00` adicional
+## 📖 API Reference
 
-Comando para reproduzir no seu ambiente:
-
-```bash
-sectionminer extract files/Artigo_Provatis.pdf --show-cost --pretty
-sectionminer section-text files/Artigo_Provatis.pdf "introducao" --show-cost
-```
-
-## Funcoes principais da API (`SectionMiner`)
-
-Arquivo: `sectionminer/miner.py`
-
-- `extract_structure(return_tokens=False)`
-  - Pipeline completo (extracao, deteccao, merge com LLM).
-  - Retorna a arvore final; com `return_tokens=True`, retorna `(arvore, usage)`.
-
-- `get_section_start_and_end_chars(title)`
-  - Retorna `(start, end)` da secao localizada por titulo.
-  - Bom para recortar diretamente em `get_full_text()`.
-
-- `get_full_text()`
-  - Retorna o texto linear completo do PDF processado.
-
-- `get_section_text(title)`
-  - Busca no tree consolidado e devolve o texto da secao.
-
-- `get_sections()`
-  - Retorna lista de titulos detectados a partir das estruturas internas.
-
-- `extract_blocks()`, `build_full_text()`, `build_sections()`
-  - Etapas internas do pipeline usadas no `test.py` para depuracao/inspecao.
-
-- `close()`
-  - Fecha o documento PDF aberto em memoria.
-
-## Exemplo minimo (mesma ideia do teste)
+### `SectionMiner(path, api_key, **kwargs)`
 
 ```python
-import json
-from decouple import config
+miner = SectionMiner(
+    "paper.pdf",
+    api_key="sk-...",                     # OpenAI API key
+    extraction_backend="pymupdf",         # "pymupdf" | "gemini"
+    gemini_api_key="...",                 # required if backend="gemini"
+    gemini_model="gemini-2.5-flash-lite", # optional, default model
+)
+```
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `extract_structure(return_tokens=False)` | `dict` or `(dict, usage)` | Full extraction pipeline. Returns section tree. |
+| `get_section_text(title)` | `str` | Retrieve text of a section by title (fuzzy match). |
+| `get_section_start_and_end_chars(title)` | `(int, int)` | Character offsets for a section in the full text. |
+| `get_full_text()` | `str` | Complete linearized text of the PDF. |
+| `get_sections()` | `list[str]` | List of all detected section titles. |
+| `close()` | `None` | Release the open PDF file handle. |
+
+<details>
+<summary><strong>Low-level pipeline methods</strong></summary>
+
+| Method | Description |
+|--------|-------------|
+| `extract_blocks()` | Extract raw text spans from PDF |
+| `build_full_text()` | Assemble linearized full text |
+| `build_sections()` | Run heading detection heuristics |
+
+Useful for debugging or custom pipelines.
+
+</details>
+
+---
+
+## 🔌 Backends
+
+### PyMuPDF *(default)*
+
+```python
+miner = SectionMiner("paper.pdf", api_key="sk-...")
+```
+
+Reads text directly from PDF layout data (font sizes, span positions). Fast, offline, no external API needed for extraction.
+
+### Gemini
+
+```python
+miner = SectionMiner(
+    "paper.pdf",
+    api_key="sk-...",
+    extraction_backend="gemini",
+    gemini_api_key="...",
+    gemini_model="gemini-2.5-flash-lite",
+)
+```
+
+Sends the PDF to Google Gemini for OCR-based text extraction. Better for scanned documents or PDFs with unusual layouts.
+
+---
+
+## 💡 Examples
+
+<details>
+<summary><strong>Basic extraction</strong></summary>
+
+```python
 from sectionminer import SectionMiner
 
-api_key = config("OPENAI_API_KEY")
-miner = SectionMiner("files/Artigo_Provatis.pdf", api_key)
-
+miner = SectionMiner("paper.pdf", api_key="sk-...")
 try:
-    structure, tokens = miner.extract_structure(return_tokens=True)
-    print(tokens)
-    print(json.dumps(structure, indent=2, ensure_ascii=False))
-
-    start, end = miner.get_section_start_and_end_chars("introducao")
-    if start is not None and end is not None:
-        print(miner.get_full_text()[start:end][:800])
-
-    print(miner.get_section_text("conclusao"))
+    structure, usage = miner.extract_structure(return_tokens=True)
+    for section in miner.get_sections():
+        print(f"→ {section}")
+        print(miner.get_section_text(section)[:200])
+        print()
 finally:
     miner.close()
 ```
 
-Exemplo minimo com Gemini:
+</details>
+
+<details>
+<summary><strong>With Gemini backend</strong></summary>
 
 ```python
-from decouple import config
 from sectionminer import SectionMiner
 
-openai_api_key = config("OPENAI_API_KEY")
-gemini_api_key = config("GEMINI_API_KEY")
-
 miner = SectionMiner(
-    "files/Artigo_Provatis.pdf",
-    api_key=openai_api_key,
+    "paper.pdf",
+    api_key="sk-...",
     extraction_backend="gemini",
-    gemini_api_key=gemini_api_key,
+    gemini_api_key="AIza...",
 )
-
 try:
     structure, usage = miner.extract_structure(return_tokens=True)
     print(usage)
@@ -402,55 +373,124 @@ finally:
     miner.close()
 ```
 
-## Estrutura do projeto
+</details>
 
-```text
-SectionMiner/
-  sectionminer/
-    __init__.py  # API publica da biblioteca
-    miner.py     # classe SectionMiner
-    client.py    # cliente LLM e merge da arvore
-    prompts.py   # prompt de consolidacao
-    server/      # FastAPI + UI (routes, static, templates)
-  base.py        # compatibilidade com import legado
-  client.py      # compatibilidade com import legado
-  prompts.py     # compatibilidade com import legado
-  test.py        # fluxo de uso principal
-  test_gemini.py # fluxo com backend Gemini
-  examples/api_smoke_test.py # teste rapido da API
-  examples/      # exemplos prontos de execucao
-  files/         # PDFs de exemplo
+<details>
+<summary><strong>Slice text by character offsets</strong></summary>
+
+```python
+miner = SectionMiner("paper.pdf", api_key="sk-...")
+try:
+    miner.extract_structure()
+    start, end = miner.get_section_start_and_end_chars("conclusion")
+    if start is not None:
+        excerpt = miner.get_full_text()[start:end]
+        print(excerpt[:500])
+finally:
+    miner.close()
 ```
 
-## Problemas comuns
+</details>
 
-### 1) "Falha ao processar PDF: Invalid control character"
+---
 
-- O PDF contém caracteres de controle inválidos que quebram a serialização JSON.
-- **Solução**: A versão atual ja sanitiza automaticamente caracteres de controle.
-- Se o erro persistir, tente outro PDF ou valide o arquivo com um leitor de PDF.
+## 💰 Cost Reference
 
-### 2) "As secoes estao vindo quebradas"
+Measured locally on `2026-03-21` using `gpt-4o-mini`:
 
-- Revise filtros em `_is_noise_heading` e `_looks_like_heading` em `sectionminer/miner.py`.
-- Ajuste threshold em `_detect_threshold` para o padrao do seu PDF.
-- PDFs com layout irregular (duas colunas, rodape intrusivo, OCR ruim) tendem a piorar a deteccao.
+| File           | Size | Pages | Tokens | Cost |
+|----------------|------|-------|--------|------|
+| `artigo_1.pdf` | 0.74 MB | 21 | 2,297 | `$0.000475` |
+| `artigo_2.pdf` | 0.04 MB | 4 | 356 | `$0.000060` |
 
-### 3) Secao nao encontrada por titulo
+> Section text retrieval after extraction is **free** — it uses local character offsets.
 
-- Tente variacao sem acento/caixa (a busca normaliza texto).
-- Verifique os titulos retornados por `get_sections()`.
+Reproduce with:
+```bash
+sectionminer extract paper.pdf --show-cost --pretty
+```
 
-### 4) Erro de chave OpenAI
+---
 
-- Confirme `OPENAI_API_KEY` no mesmo ambiente da execucao.
-- Se usar `.env`, confirme que esta na raiz do projeto.
+## 🗂 Project Structure
 
-## TODO (coisas a fazer)
+```
+SectionMiner/
+├── sectionminer/
+│   ├── __init__.py        # Public API
+│   ├── miner.py           # SectionMiner class
+│   ├── client.py          # LLM client + tree merge
+│   ├── prompts.py         # Consolidation prompt
+│   └── server/            # FastAPI + UI (routes, static, templates)
+├── examples/
+│   ├── basic_usage.py
+│   └── api_smoke_test.py
+├── files/                 # Sample PDFs
+├── test.py                # PyMuPDF pipeline example
+├── test_gemini.py         # Gemini pipeline example
+└── requirements.txt
+```
 
-- [ ] Criar testes automatizados para `detect_headings`, `build_sections` e `get_section_text`.
-- [ ] Adicionar modo sem LLM (somente heuristica local) para uso offline.
-- [x] Criar CLI inicial: `sectionminer extract arquivo.pdf --output out.json`.
-- [ ] Expor parametros de heuristica por configuracao (threshold, filtros de ruido).
-- [X] Melhorar merge para manter apenas secoes/subsecoes validas (sem fragmentos quebrados).
+---
 
+## 🐛 Troubleshooting
+
+<details>
+<summary><strong>"Invalid control character" when processing PDF</strong></summary>
+
+The PDF contains invalid control characters that break JSON serialization.
+The current version sanitizes these automatically. If the error persists, try a different PDF or validate it with a PDF reader.
+
+</details>
+
+<details>
+<summary><strong>Sections are fragmented or broken</strong></summary>
+
+- Review `_is_noise_heading` and `_looks_like_heading` in `sectionminer/miner.py`
+- Adjust the threshold in `_detect_threshold` for your PDF's font pattern
+- Two-column layouts, intrusive footers, and poor OCR quality increase detection errors
+
+</details>
+
+<details>
+<summary><strong>Section not found by title</strong></summary>
+
+- Try a variation without accents or in lowercase (search normalizes text)
+- Inspect available titles with `miner.get_sections()`
+
+</details>
+
+<details>
+<summary><strong>OpenAI key error</strong></summary>
+
+- Confirm `OPENAI_API_KEY` is set in the same environment as your script
+- If using `.env`, ensure it's in the project root
+
+</details>
+
+---
+
+## 🗺 Roadmap
+
+- [ ] Automated tests for `detect_headings`, `build_sections`, `get_section_text`
+- [ ] Expose heuristic parameters via config (threshold, noise filters)
+- [x] CLI: `sectionminer extract file.pdf --output out.json`
+- [x] Heuristic-only mode (no LLM, fully offline)
+- [x] Improved merge — keeps only valid sections/subsections without broken fragments
+- [x] Web UI with PDF viewer and section highlighting
+
+---
+
+## 📄 License
+
+[MIT](LICENSE) © [ehodiogo](https://github.com/ehodiogo)
+
+---
+
+<div align="center">
+
+Made with ♥ for researchers who'd rather spend time reading papers than parsing them.
+
+**[⬆ back to top](#)**
+
+</div>
