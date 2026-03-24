@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
       :root {
         --bg: #080c14;
@@ -724,7 +725,6 @@
     </header>
 
     <main>
-      <!-- Left panel: upload + viewer -->
       <section class="panel">
         <div style="display:flex; align-items:start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
           <div class="section-header">
@@ -798,12 +798,24 @@
         </div>
       </section>
 
-      <!-- Right panel: sections -->
       <section class="panel">
-        <div class="section-header">
-          <span class="section-eyebrow">Resultado</span>
-          <h2 class="section-title">Seções extraídas</h2>
-          <p class="section-desc">Clique em uma seção para destacá-la no PDF. Texto limpo, sem espaçamentos quebrados.</p>
+        <div class="section-header" style="flex-direction: row; justify-content: space-between; align-items: flex-start; gap: 10px;">
+          <div>
+            <span class="section-eyebrow">Resultado</span>
+            <h2 class="section-title">Seções extraídas</h2>
+            <p class="section-desc">Clique em uma seção para destacá-la no PDF. Texto limpo, sem espaçamentos quebrados.</p>
+          </div>
+
+          <div id="export-actions" style="display: none; gap: 8px;">
+            <button id="btn-export-json" class="pill-button" title="Baixar JSON">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              JSON
+            </button>
+            <button id="btn-export-pdf" class="pill-button" title="Baixar PDF">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              PDF
+            </button>
+          </div>
         </div>
         <div id="sections" class="sections-wrapper">
           <div class="empty-state">
@@ -848,21 +860,28 @@
       const metricBackendEl = document.getElementById("metric-backend");
       const canvas = document.getElementById("pdf-canvas");
       const overlay = document.getElementById("pdf-overlay");
+
       const detailModal = document.getElementById("detail-modal");
       const detailTitle = document.getElementById("detail-title");
       const detailText = document.getElementById("detail-text");
       const detailClose = document.getElementById("detail-close");
+
+      const exportActions = document.getElementById("export-actions");
+      const btnExportJson = document.getElementById("btn-export-json");
+      const btnExportPdf = document.getElementById("btn-export-pdf");
 
       const state = { pdfDoc: null, pageNumber: 1, pageCount: 0, viewport: null, sections: [], selectedSection: null };
 
       function compactText(value) {
         return (value || "").replace(/\s+/g, " ").replace(/\s*\n\s*/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       }
+
       function formatBackendName(value) {
         if (value === "gemini") return "Gemini";
         if (value === "pymupdf") return "PyMuPDF";
         return value || "—";
       }
+
       function updateMetrics(payload) {
         const metrics = payload.metrics || {};
         const pages = metrics.pages ?? payload.pages ?? 0;
@@ -874,6 +893,7 @@
         metricSectionsEl.textContent = String(sections);
         metricBackendEl.textContent = backend;
       }
+
       function resetMetrics() {
         backendBadgeEl.textContent = "aguardando";
         metricPagesEl.textContent = "—";
@@ -886,6 +906,7 @@
         const page = await state.pdfDoc.getPage(state.pageNumber);
         const viewport = page.getViewport({ scale: 1.2 });
         const ctx = canvas.getContext("2d");
+
         canvas.width = viewport.width;
         canvas.height = viewport.height;
         overlay.style.width = `${viewport.width}px`;
@@ -893,6 +914,7 @@
         overlay.style.position = "absolute";
         overlay.style.top = "0";
         overlay.style.left = "0";
+
         state.viewport = viewport;
         pageInfoEl.textContent = `Página ${state.pageNumber} / ${state.pageCount}`;
         await page.render({ canvasContext: ctx, viewport }).promise;
@@ -902,158 +924,221 @@
       function drawHighlights() {
         overlay.innerHTML = "";
         if (!state.selectedSection || !state.viewport) return;
+
         const locations = state.selectedSection.locations || [];
         const pageLocations = locations.filter(item => item.page === state.pageNumber - 1);
         if (!pageLocations.length) return;
+
         for (const location of pageLocations) {
           if (!Array.isArray(location.bbox) || location.bbox.length !== 4) continue;
+
           const [x0, y0, x1, y1] = location.bbox;
-          const [vx0, vy0, vx1, vy1] = state.viewport.convertToViewportRectangle([x0, y0, x1, y1]);
-          const left = Math.min(vx0, vx1), top = Math.min(vy0, vy1);
-          const width = Math.abs(vx1 - vx0), height = Math.abs(vy1 - vy0);
+          const [vx0, vy0] = state.viewport.convertToViewportPoint(x0, y0);
+          const [vx1, vy1] = state.viewport.convertToViewportPoint(x1, y1);
+
           const box = document.createElement("div");
           box.className = "highlight-box";
+
+          const left = Math.min(vx0, vx1);
+          const top = Math.min(vy0, vy1);
+          const width = Math.abs(vx1 - vx0);
+          const height = Math.abs(vy1 - vy0);
+
           box.style.left = `${left}px`;
           box.style.top = `${top}px`;
-          box.style.width = `${Math.max(width, 2)}px`;
-          box.style.height = `${Math.max(height, 2)}px`;
+          box.style.width = `${width}px`;
+          box.style.height = `${height}px`;
+
           overlay.appendChild(box);
         }
       }
 
-      function buildSectionCard(section, index) {
-        const card = document.createElement("article");
-        card.className = "section-card";
-        card.style.marginLeft = `${(section.level - 1) * 12}px`;
-        card.style.animationDelay = `${index * 0.04}s`;
-
-        const title = document.createElement("h3");
-        const num = document.createElement("span");
-        num.className = "section-num";
-        num.textContent = index + 1;
-        title.appendChild(num);
-        title.appendChild(document.createTextNode(compactText(section.title || "(Sem título)")));
-
-        const text = document.createElement("pre");
-        text.textContent = compactText(section.text) || "(Sem texto encontrado)";
-
-        card.appendChild(title);
-        card.appendChild(text);
-
-        const actions = document.createElement("div");
-        actions.className = "section-actions";
-
-        const detailBtn = document.createElement("button");
-        detailBtn.type = "button";
-        detailBtn.className = "pill-button";
-        detailBtn.textContent = "Ver detalhe";
-        detailBtn.addEventListener("click", (event) => {
-          event.stopPropagation();
-          openDetail(section);
-        });
-
-        actions.appendChild(detailBtn);
-        card.appendChild(actions);
-
-        card.addEventListener("click", async () => {
-          state.selectedSection = section;
-          document.querySelectorAll(".section-card").forEach(el => el.classList.remove("active"));
-          card.classList.add("active");
-          const firstLocation = (section.locations || [])[0];
-          if (firstLocation && state.pdfDoc) {
-            state.pageNumber = firstLocation.page + 1;
-            await renderPage();
-          } else { drawHighlights(); }
-        });
-        return card;
-      }
-
-      function openDetail(section) {
-        detailTitle.textContent = compactText(section.title || "(Sem título)");
-        detailText.textContent = compactText(section.text) || "(Sem texto encontrado)";
-        detailModal.classList.remove("hidden");
-      }
-
-      function closeDetail() {
-        detailModal.classList.add("hidden");
-      }
-
-      detailClose.addEventListener("click", closeDetail);
-      detailModal.addEventListener("click", (event) => {
-        if (event.target.classList.contains("modal-backdrop")) {
-          closeDetail();
-        }
-      });
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && !detailModal.classList.contains("hidden")) {
-          closeDetail();
-        }
-      });
-
-      function renderSections() {
+      function renderSectionsList() {
         sectionsEl.innerHTML = "";
-        if (!state.sections.length) {
+
+        if (!state.sections || state.sections.length === 0) {
           sectionsEl.innerHTML = `
             <div class="empty-state">
               <div class="empty-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
               </div>
               <p class="empty-title">Nenhuma seção ainda</p>
               <p class="empty-desc">Envie um PDF para visualizar as seções extraídas com destaque direto no documento.</p>
-            </div>`;
+            </div>
+          `;
+          exportActions.style.display = "none";
           return;
         }
-        state.sections.forEach((section, index) => sectionsEl.appendChild(buildSectionCard(section, index)));
+
+        exportActions.style.display = "flex";
+
+        state.sections.forEach((sec, idx) => {
+          const card = document.createElement("div");
+          card.className = "section-card";
+
+          const title = sec.title || `Seção ${idx + 1}`;
+          const textSnippet = compactText(sec.text || "Sem texto extraído.");
+
+          card.innerHTML = `
+            <h3><span class="section-num">${idx + 1}</span> ${title}</h3>
+            <pre>${textSnippet}</pre>
+            <div class="section-actions">
+              <button type="button" class="pill-button btn-read-more">Ler mais</button>
+            </div>
+          `;
+
+          card.addEventListener("click", () => {
+            document.querySelectorAll(".section-card").forEach(c => c.classList.remove("active"));
+            card.classList.add("active");
+            state.selectedSection = sec;
+
+            if (sec.locations && sec.locations.length > 0) {
+              const targetPage = sec.locations[0].page + 1;
+              if (state.pageNumber !== targetPage) {
+                state.pageNumber = targetPage;
+                renderPage();
+              } else {
+                drawHighlights();
+              }
+            } else {
+              drawHighlights();
+            }
+          });
+
+          const readMoreBtn = card.querySelector(".btn-read-more");
+          readMoreBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            detailTitle.textContent = title;
+            detailText.textContent = textSnippet;
+            detailModal.classList.remove("hidden");
+          });
+
+          sectionsEl.appendChild(card);
+        });
       }
 
-      async function loadPdf(url) {
-        const loadingTask = pdfjsLib.getDocument(url);
-        state.pdfDoc = await loadingTask.promise;
-        state.pageCount = state.pdfDoc.numPages;
-        state.pageNumber = 1;
-        await renderPage();
+      function downloadJSON() {
+        if (!state.sections || state.sections.length === 0) return;
+        const dataStr = JSON.stringify(state.sections, null, 2);
+        const blob = new Blob([dataStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "secoes_extraidas.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       }
 
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (!input.files.length) { statusEl.textContent = "Selecione um PDF."; return; }
-        statusEl.textContent = "⏳ Processando documento...";
-        sectionsEl.innerHTML = "";
-        overlay.innerHTML = "";
+      function downloadPDF() {
+        if (!state.sections || state.sections.length === 0) return;
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        let yPosition = 15;
+        const margin = 15;
+        const pageHeight = doc.internal.pageSize.height;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text("Relatório de Seções Extraídas", margin, yPosition);
+        yPosition += 15;
+
+        state.sections.forEach((sec, index) => {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(12);
+          const title = `${index + 1}. ${sec.title || "Sem Título"}`;
+          doc.text(title, margin, yPosition);
+          yPosition += 7;
+
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10);
+          const text = compactText(sec.text || "Nenhum texto extraído.");
+          const splitText = doc.splitTextToSize(text, 180);
+
+          splitText.forEach(line => {
+            if (yPosition > pageHeight - 20) {
+              doc.addPage();
+              yPosition = 20;
+            }
+            doc.text(line, margin, yPosition);
+            yPosition += 5;
+          });
+
+          yPosition += 10;
+        });
+
+        doc.save("secoes_extraidas.pdf");
+      }
+
+      // Eventos
+      btnExportJson.addEventListener("click", downloadJSON);
+      btnExportPdf.addEventListener("click", downloadPDF);
+
+      detailClose.addEventListener("click", () => detailModal.classList.add("hidden"));
+
+      prevPageBtn.addEventListener("click", () => {
+        if (state.pageNumber <= 1) return;
+        state.pageNumber--;
+        renderPage();
+      });
+
+      nextPageBtn.addEventListener("click", () => {
+        if (state.pageNumber >= state.pageCount) return;
+        state.pageNumber++;
+        renderPage();
+      });
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const file = input.files[0];
+        if (!file) return;
+
+        statusEl.textContent = "Lendo PDF localmente...";
+        statusEl.style.color = "var(--accent)";
         resetMetrics();
-        const formData = new FormData();
-        formData.append("file", input.files[0]);
-        try {
-          const response = await fetch("/api/extract", { method: "POST", body: formData });
-          if (!response.ok) {
-            const payload = await response.json();
-            throw new Error(payload.detail || "Erro ao extrair seções");
-          }
-          const payload = await response.json();
-          state.sections = payload.sections || [];
-          state.selectedSection = null;
-          renderSections();
-          await loadPdf(payload.pdf_url);
-          updateMetrics(payload);
-          const backend = formatBackendName(payload.extraction_backend);
-          statusEl.textContent = `✓ ${payload.filename} · ${backend}`;
-          statusEl.style.color = "#6ee7b7";
-        } catch (error) {
-          statusEl.textContent = `✕ ${error.message}`;
-          statusEl.style.color = "#f87171";
-          resetMetrics();
-        }
-      });
+        state.sections = [];
+        state.selectedSection = null;
+        renderSectionsList();
 
-      prevPageBtn.addEventListener("click", async () => {
-        if (!state.pdfDoc || state.pageNumber <= 1) return;
-        state.pageNumber -= 1;
-        await renderPage();
-      });
-      nextPageBtn.addEventListener("click", async () => {
-        if (!state.pdfDoc || state.pageNumber >= state.pageCount) return;
-        state.pageNumber += 1;
-        await renderPage();
+        const fileReader = new FileReader();
+        fileReader.onload = async function() {
+          const typedarray = new Uint8Array(this.result);
+          try {
+            state.pdfDoc = await pdfjsLib.getDocument(typedarray).promise;
+            state.pageCount = state.pdfDoc.numPages;
+            state.pageNumber = 1;
+            renderPage();
+
+            statusEl.textContent = "Enviando para o servidor...";
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const response = await fetch("/api/extract", {
+                method: "POST",
+              body: formData
+            });
+
+            if (!response.ok) throw new Error("Falha na extração");
+
+            const data = await response.json();
+
+            state.sections = data.sections || [];
+            updateMetrics(data);
+            renderSectionsList();
+
+            statusEl.textContent = "Extração concluída com sucesso!";
+            statusEl.style.color = "var(--green)";
+
+          } catch (error) {
+            console.error(error);
+            statusEl.textContent = "Erro durante a extração ou leitura do PDF.";
+            statusEl.style.color = "#ef4444";
+          }
+        };
+        fileReader.readAsArrayBuffer(file);
       });
     </script>
   </body>
