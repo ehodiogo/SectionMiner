@@ -365,10 +365,10 @@ finally:
 
 Measured locally on `2026-03-21` using `gpt-4o-mini`:
 
-| File | Size | Pages | Tokens | Cost |
-|------|------|-------|--------|------|
-| `Artigo_Provatis.pdf` | 0.74 MB | 21 | 2,297 | `$0.000475` |
-| `Artigo_Mae.pdf` | 0.04 MB | 4 | 356 | `$0.000060` |
+| File           | Size | Pages | Tokens | Cost |
+|----------------|------|-------|--------|------|
+| `artigo_1.pdf` | 0.74 MB | 21 | 2,297 | `$0.000475` |
+| `artigo_2.pdf` | 0.04 MB | 4 | 356 | `$0.000060` |
 
 > Section text retrieval after extraction is **free** — it uses local character offsets.
 
