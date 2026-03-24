@@ -1,0 +1,14 @@
+{
+  "name": "sectionminer-ui",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./sectionminer/server/static/tailwind.css -o ./sectionminer/server/static/styles.css --minify",
+    "dev:css": "tailwindcss -i ./sectionminer/server/static/tailwind.css -o ./sectionminer/server/static/styles.css --watch"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14"
+  }
+}

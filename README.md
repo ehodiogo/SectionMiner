@@ -180,6 +180,8 @@ sectionminer runserver --extraction-backend gemini --gemini-model gemini-2.0-fla
 sectionminer runserver --heuristic-only
 ```
 
+> Se o comando `sectionminer runserver` nao aparecer, atualize a instalacao local: `pip install -U .` ou `pip install -U sectionminer` dentro do seu ambiente virtual.
+
 Open in your browser: **http://127.0.0.1:8000**
 
 **Features:**
@@ -230,6 +232,18 @@ Open in your browser: **http://127.0.0.1:8000**
 ```
 
 </details>
+
+### Frontend styles (Tailwind)
+
+The web UI CSS is built with Tailwind. Install the Node dev dependencies once, then build or watch:
+
+```bash
+npm install
+npm run build:css   # one-off build
+npm run dev:css     # watch mode
+```
+
+The entry stylesheet lives at `sectionminer/server/static/tailwind.css` and compiles to `sectionminer/server/static/styles.css` (served by FastAPI).
 
 ---
 

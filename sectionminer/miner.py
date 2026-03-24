@@ -15,8 +15,18 @@ def _sanitize_text(text: str) -> str:
     """Remove control characters that break JSON serialization."""
     if not isinstance(text, str):
         return str(text)
-    # Remove control characters except newline, tab, carriage return
     return "".join(c for c in text if ord(c) >= 32 or c in "\n\t\r")
+
+
+def _compact_text(text: str) -> str:
+    """Collapse excessive whitespace without losing paragraph breaks."""
+    if not isinstance(text, str):
+        text = str(text)
+    text = _sanitize_text(text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _extract_json_array_text(raw_text: str) -> str:
@@ -303,7 +313,13 @@ class SectionMiner:
                 ) from inner
 
     def _build_full_text_from_gemini(self) -> str:
-        spans = self._extract_text_gemini()
+        try:
+            spans = self._extract_text_gemini()
+        except ValueError:
+            # Fallback to local PyMuPDF extraction if Gemini returns malformed JSON.
+            self.extract_blocks()
+            self.build_full_text()
+            return self.full_text
         full_text = ""
         offsets = []
 
@@ -520,12 +536,12 @@ class SectionMiner:
         if start is None or end is None:
             return None
 
-        return self.full_text[start:end]
+        return _compact_text(self.full_text[start:end])
 
-    def get_full_text(self) -> str:
+    def get_full_text(self, normalize_whitespace: bool = False) -> str:
         if self.full_text is None:
             raise ValueError("Execute extract_structure primeiro")
-        return self.full_text
+        return _compact_text(self.full_text) if normalize_whitespace else self.full_text
 
     def get_section_start_and_end_chars(self, title: str) -> tuple[int | None, int | None]:
         sec = self.get_section(title)

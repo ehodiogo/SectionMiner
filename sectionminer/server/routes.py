@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from sectionminer import SectionMiner
-from sectionminer.miner import _sanitize_text
+from sectionminer.miner import _compact_text
 
 router = APIRouter()
 
@@ -103,15 +103,13 @@ async def extract_sections(request: Request, file: UploadFile = File(...)) -> di
 
         sections = []
         for node, depth in _iter_nodes(tree):
-            title = node.get("title", "")
-            title = _sanitize_text(title)
+            title = _compact_text(node.get("title", ""))
             start = node.get("start_char")
             end = node.get("end_char")
             text = ""
             locations = []
             if start is not None and end is not None:
-                text = miner.get_full_text()[start:end]
-                text = _sanitize_text(text)
+                text = _compact_text(miner.get_full_text()[start:end])
                 locations = miner.get_locations_by_char_range(start, end)
             sections.append(
                 {

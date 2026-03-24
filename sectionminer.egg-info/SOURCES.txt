@@ -18,4 +18,5 @@ sectionminer/server/app.py
 sectionminer/server/routes.py
 sectionminer/server/static/app.js
 sectionminer/server/static/styles.css
+sectionminer/server/static/tailwind.css
 sectionminer/server/templates/index.html

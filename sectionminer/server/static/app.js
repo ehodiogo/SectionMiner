@@ -13,8 +13,7 @@ const nextPageBtn = document.getElementById("next-page");
 const backendBadgeEl = document.getElementById("backend-badge");
 const metricPagesEl = document.getElementById("metric-pages");
 const metricSectionsEl = document.getElementById("metric-sections");
-const metricTokensEl = document.getElementById("metric-tokens");
-const metricCostEl = document.getElementById("metric-cost");
+const metricBackendEl = document.getElementById("metric-backend");
 const canvas = document.getElementById("pdf-canvas");
 const overlay = document.getElementById("pdf-overlay");
 
@@ -26,6 +25,14 @@ const state = {
   sections: [],
   selectedSection: null,
 };
+
+function compactText(value) {
+  return (value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 function formatBackendName(value) {
   if (value === "gemini") {
@@ -41,24 +48,20 @@ function updateMetrics(payload) {
   const metrics = payload.metrics || {};
   const pages = metrics.pages ?? payload.pages ?? 0;
   const sections = metrics.sections ?? (payload.sections || []).length;
-  const tokens = metrics.total_tokens ?? payload.usage?.total_tokens ?? 0;
-  const cost = metrics.cost_usd ?? payload.usage?.cost_usd ?? 0;
   const backend = formatBackendName(payload.extraction_backend);
   const modeLabel = payload.heuristic_only ? "Heuristica" : "LLM";
 
   backendBadgeEl.textContent = `${backend} - ${modeLabel}`;
   metricPagesEl.textContent = String(pages);
   metricSectionsEl.textContent = String(sections);
-  metricTokensEl.textContent = String(tokens);
-  metricCostEl.textContent = `$${Number(cost).toFixed(6)}`;
+  metricBackendEl.textContent = backend;
 }
 
 function resetMetrics() {
   backendBadgeEl.textContent = "-";
   metricPagesEl.textContent = "-";
   metricSectionsEl.textContent = "-";
-  metricTokensEl.textContent = "-";
-  metricCostEl.textContent = "-";
+  metricBackendEl.textContent = "-";
 }
 
 async function renderPage() {
@@ -123,10 +126,10 @@ function buildSectionCard(section, index) {
   card.style.marginLeft = `${(section.level - 1) * 12}px`;
 
   const title = document.createElement("h3");
-  title.textContent = `${index + 1}. ${section.title}`;
+  title.textContent = `${index + 1}. ${compactText(section.title || "(Sem titulo)")}`;
 
   const text = document.createElement("pre");
-  text.textContent = section.text || "(Sem texto encontrado)";
+  text.textContent = compactText(section.text) || "(Sem texto encontrado)";
 
   card.appendChild(title);
   card.appendChild(text);
@@ -152,7 +155,12 @@ function renderSections() {
   sectionsEl.innerHTML = "";
 
   if (!state.sections.length) {
-    sectionsEl.textContent = "Nenhuma secao encontrada.";
+    sectionsEl.innerHTML = `
+      <div class="empty-state">
+        <p class="text-sm font-semibold text-slate-800">Nenhuma secao ainda</p>
+        <p class="text-sm text-slate-600">Envie um PDF para ver as secoes consolidadas sem espacamentos quebrados.</p>
+      </div>
+    `;
     return;
   }
 

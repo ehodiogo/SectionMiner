@@ -7,6 +7,7 @@ from typing import Any
 from decouple import config
 
 from sectionminer import SectionMiner
+from sectionminer.miner import _compact_text
 
 
 def _resolve_api_key(cli_api_key: str | None) -> str:
@@ -49,7 +50,12 @@ def _extract_command(args: argparse.Namespace) -> int:
         if args.heuristic_only:
             miner.extract_blocks()
             miner.build_full_text()
-            sections = miner.build_sections()
+            raw_sections = miner.build_sections()
+            sections = []
+            for section in raw_sections:
+                sanitized = dict(section)
+                sanitized["text"] = _compact_text(section.get("text", ""))
+                sections.append(sanitized)
             payload = {
                 "mode": "heuristic",
                 "sections": sections,
@@ -89,7 +95,7 @@ def _section_text_command(args: argparse.Namespace) -> int:
             start, end = miner.get_section_start_and_end_chars(args.title)
             if start is None or end is None:
                 raise SystemExit(f"Secao nao encontrada: {args.title}")
-            text = miner.get_full_text()[start:end]
+            text = _compact_text(miner.get_full_text()[start:end])
             print(text)
             if args.show_cost:
                 _print_usage_summary({"cost_usd": 0.0, "total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0})
