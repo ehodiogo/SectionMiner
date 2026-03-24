@@ -303,7 +303,13 @@ class SectionMiner:
                 ) from inner
 
     def _build_full_text_from_gemini(self) -> str:
-        spans = self._extract_text_gemini()
+        try:
+            spans = self._extract_text_gemini()
+        except ValueError:
+            # Fallback to local PyMuPDF extraction if Gemini returns malformed JSON.
+            self.extract_blocks()
+            self.build_full_text()
+            return self.full_text
         full_text = ""
         offsets = []
 
