@@ -586,7 +586,7 @@ Use the exact title shown there (or a close variation) in `preset_sections`.
 ## 🗺 Roadmap
 
 - [ ] Automated tests for `detect_headings`, `build_sections`, `get_section_text`
-- [ ] Expose heuristic parameters via config (threshold, noise filters)
+- [ ] Expose heuristic parameters via config (threshold, noise filters).
 - [x] CLI: `sectionminer extract file.pdf --output out.json`
 - [x] Heuristic-only mode (no LLM, fully offline)
 - [x] Improved merge — keeps only valid sections/subsections without broken fragments
