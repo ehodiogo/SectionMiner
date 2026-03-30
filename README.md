@@ -29,7 +29,7 @@
 
 <br/>
 
-[**Quickstart**](#-quickstart) · [**Installation**](#-installation) · [**CLI**](#-cli) · [**API Reference**](#-api-reference) · [**Web UI**](#-web-ui) · [**Examples**](#-examples)
+[**Quickstart**](#-quickstart) · [**Installation**](#-installation) · [**Preset Sections**](#-preset-sections) · [**CLI**](#-cli) · [**API Reference**](#-api-reference) · [**Web UI**](#-web-ui) · [**Examples**](#-examples)
 
 <br/>
 
@@ -121,6 +121,63 @@ Or via `.env` in your project root:
 ```env
 OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...
+```
+
+---
+
+## 🎯 Preset Sections
+
+By default, SectionMiner extracts **all** sections it detects in the PDF. When you only need specific sections, use `preset_sections` to activate **filter mode** — the library will return only the sections whose titles match your list, ignoring everything else.
+
+```python
+miner = SectionMiner(
+    "paper.pdf",
+    api_key="sk-...",
+    preset_sections=["Introdução", "Metodologia", "Conclusão"],
+)
+
+try:
+    structure, usage = miner.extract_structure(return_tokens=True)
+    print(miner.get_section_text("Introdução"))
+finally:
+    miner.close()
+```
+
+### How matching works
+
+Matching is flexible and normalised — it strips leading numbering, folds casing, removes diacritics, and collapses whitespace before comparing. This means a preset of `"Introdução"` will match headings like `"-Introdução"`, `"1. INTRODUÇÃO"`, `"2.1 Introdução Geral"`, etc.
+
+| Preset | Matches in PDF |
+|--------|----------------|
+| `"Introdução"` | `"-Introdução"`, `"1. INTRODUÇÃO"`, `"Introdução Geral"` |
+| `"Metodologia"` | `"3. Metodologia"`, `"METODOLOGIA"`, `"2.3 Metodologia de Pesquisa"` |
+| `"Conclusão"` | `"-CONCLUSÃO"`, `"Conclusão e Trabalhos Futuros"` |
+
+### Key behaviours
+
+- **No fabrication** — if a preset name has no match in the document, it is silently omitted. SectionMiner never invents sections.
+- **Subsections follow their parent** — subsections are included only when their parent section was matched.
+- **Document order preserved** — matched sections appear in the order they occur in the PDF, not in preset list order.
+- **Double-filtered** — the LLM is instructed to filter, and a Python post-processing step removes any hallucinated nodes before results are returned.
+
+### With Gemini backend
+
+`preset_sections` works identically with both backends:
+
+```python
+miner = SectionMiner(
+    "paper.pdf",
+    api_key="sk-...",
+    extraction_backend="gemini",
+    gemini_api_key="AIza...",
+    preset_sections=["Introdução"],
+)
+
+try:
+    miner.extract_structure()
+    print(miner.get_section_text("Introdução"))
+finally:
+    miner.close()
 ```
 
 ---
@@ -258,8 +315,21 @@ miner = SectionMiner(
     extraction_backend="pymupdf",         # "pymupdf" | "gemini"
     gemini_api_key="...",                 # required if backend="gemini"
     gemini_model="gemini-2.5-flash-lite", # optional, default model
+    preset_sections=["Introdução", "Metodologia"],  # optional filter
 )
 ```
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `str` | — | Path to the PDF file |
+| `api_key` | `str` | — | OpenAI API key for LLM consolidation |
+| `model` | `str` | `"gpt-4o-mini"` | OpenAI model to use |
+| `extraction_backend` | `str` | `"pymupdf"` | `"pymupdf"` or `"gemini"` |
+| `gemini_api_key` | `str` | `None` | Google Gemini API key |
+| `gemini_model` | `str` | `"gemini-2.0-flash"` | Gemini model name |
+| `preset_sections` | `list[str]` | `None` | If provided, return **only** sections matching these names |
 
 ### Methods
 
@@ -335,7 +405,52 @@ finally:
 </details>
 
 <details>
-<summary><strong>With Gemini backend</strong></summary>
+<summary><strong>Extract only specific sections (preset filter)</strong></summary>
+
+```python
+from sectionminer import SectionMiner
+
+miner = SectionMiner(
+    "paper.pdf",
+    api_key="sk-...",
+    preset_sections=["Introdução", "Metodologia", "Conclusão"],
+)
+try:
+    miner.extract_structure()
+    # Only matched sections are returned — no hallucination, no extras
+    print(miner.get_section_text("Introdução"))
+    print(miner.get_section_text("Metodologia"))
+finally:
+    miner.close()
+```
+
+</details>
+
+<details>
+<summary><strong>Preset sections with Gemini backend</strong></summary>
+
+```python
+from sectionminer import SectionMiner
+
+miner = SectionMiner(
+    "paper.pdf",
+    api_key="sk-...",
+    extraction_backend="gemini",
+    gemini_api_key="AIza...",
+    preset_sections=["Introdução"],
+)
+try:
+    structure, usage = miner.extract_structure(return_tokens=True)
+    print(usage)
+    print(miner.get_section_text("Introdução"))
+finally:
+    miner.close()
+```
+
+</details>
+
+<details>
+<summary><strong>With Gemini backend (full extraction)</strong></summary>
 
 ```python
 from sectionminer import SectionMiner
@@ -385,6 +500,7 @@ Measured locally on `2026-03-21` using `gpt-4o-mini`:
 | `artigo_2.pdf` | 0.04 MB | 4 | 356 | `$0.000060` |
 
 > Section text retrieval after extraction is **free** — it uses local character offsets.
+> Using `preset_sections` reduces token usage further by limiting LLM output to matched sections only.
 
 Reproduce with:
 ```bash
@@ -438,6 +554,22 @@ The current version sanitizes these automatically. If the error persists, try a 
 
 - Try a variation without accents or in lowercase (search normalizes text)
 - Inspect available titles with `miner.get_sections()`
+- If using `preset_sections`, confirm the section actually exists in the PDF — presets with no match are silently omitted, never fabricated
+
+</details>
+
+<details>
+<summary><strong>Preset section returns None text</strong></summary>
+
+The section was matched by the LLM but `start_char` is null, meaning the title in `section_structures` differs from what the LLM returned. Debug with:
+
+```python
+miner.extract_structure()
+for s in miner.section_structures:
+    print(repr(s["title"]), s["start"])
+```
+
+Use the exact title shown there (or a close variation) in `preset_sections`.
 
 </details>
 
@@ -459,6 +591,7 @@ The current version sanitizes these automatically. If the error persists, try a 
 - [x] Heuristic-only mode (no LLM, fully offline)
 - [x] Improved merge — keeps only valid sections/subsections without broken fragments
 - [x] Web UI with PDF viewer and section highlighting
+- [x] Preset sections filter — extract only named sections with flexible normalised matching
 
 ---
 

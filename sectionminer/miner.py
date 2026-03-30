@@ -17,7 +17,6 @@ def _sanitize_text(text: str) -> str:
         return str(text)
     return "".join(c for c in text if ord(c) >= 32 or c in "\n\t\r")
 
-
 def _compact_text(text: str) -> str:
     """Collapse excessive whitespace without losing paragraph breaks."""
     if not isinstance(text, str):
@@ -77,6 +76,7 @@ class SectionMiner:
         extraction_backend: str = "pymupdf",
         gemini_api_key: str | None = None,
         gemini_model: str = "gemini-2.0-flash",
+        preset_sections: list[str] | None = None,
     ):
         if extraction_backend not in self.SUPPORTED_BACKENDS:
             raise ValueError(
@@ -90,6 +90,7 @@ class SectionMiner:
         self.extraction_backend = extraction_backend
         self.gemini_api_key = gemini_api_key
         self.gemini_model = gemini_model
+        self.preset_sections = self._normalize_preset_sections(preset_sections)
         self.doc = fitz.open(pdf)
         self.client: LLMClient | None = None
 
@@ -100,6 +101,25 @@ class SectionMiner:
         self.sections: list | None = None
         self.section_structures: dict | None = None
 
+    def _normalize_preset_sections(self, values: list[str] | None) -> list[str]:
+        if not values:
+            return []
+
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for item in values:
+            if not isinstance(item, str):
+                continue
+            text = _compact_text(item)
+            if not text:
+                continue
+            key = self.normalize(text)
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(text)
+        return cleaned
+
     def normalize(self, text: str) -> str:
         return unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode("ascii").lower()
 
@@ -109,9 +129,39 @@ class SectionMiner:
     def _is_corrupted(self, text: str) -> bool:
         return "\u00e2\u20ac" in text or "\ufffd" in text
 
+    def _looks_like_table_row(self, text: str) -> bool:
+        tokens = text.split()
+        if not tokens:
+            return False
+
+        numeric_like = 0
+        for t in tokens:
+            if re.match(r"^[\d.,%+-]+$", t):
+                numeric_like += 1
+                continue
+            if re.match(r"^[\d]+[xX][\d]+$", t):
+                numeric_like += 1
+                continue
+            if re.match(r"^[A-Z]{1,4}\d{1,3}$", t):
+                numeric_like += 1
+                continue
+
+        # Treat as table-ish if most tokens are numericish or short codes
+        if numeric_like >= max(2, len(tokens) * 0.6):
+            return True
+
+        # Rows with many delimiters or pipes often come from tables
+        if text.count("|") >= 2 or text.count(";") >= 2:
+            return True
+
+        return False
+
     def _is_noise_heading(self, text: str) -> bool:
         t = text.strip()
         low = self.normalize(t)
+
+        if self._looks_like_table_row(t):
+            return True
 
         if len(t) < 3 or len(t) > 140:
             return True
@@ -409,19 +459,30 @@ class SectionMiner:
         self.client = LLMClient(api_key=self.api_key, model=self.model, max_tokens=4096)
 
         heading_index = []
+        allowed_titles: list[str] = []
+        seen_titles: set[str] = set()
         for s in self.section_structures:
+            cleaned_title = _compact_text(s["title"])
+            norm_title = self.normalize(cleaned_title)
             start_anchor = self.full_text[s["start"] : s["start"] + 60].strip()
             end_anchor = self.full_text[max(0, s["end"] - 60) : s["end"]].strip()
+            if cleaned_title and norm_title not in seen_titles:
+                seen_titles.add(norm_title)
+                allowed_titles.append(cleaned_title)
             heading_index.append(
                 {
-                    "title": s["title"],
+                    "title": cleaned_title,
                     "level": s["level"],
                     "start_anchor": start_anchor,
                     "end_anchor": end_anchor,
                 }
             )
 
-        result, usage = self.client.merge_trees(heading_index)
+        result, usage = self.client.merge_trees(
+            heading_index,
+            preset_sections=self.preset_sections,
+            allowed_titles=allowed_titles,
+        )
         self._inject_positions(result)
 
         self.structure = result

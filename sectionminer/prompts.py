@@ -9,6 +9,8 @@ Each heading has: title, level (1 = section, 2 = subsection),
 start_anchor, and end_anchor.
 Organise them into a single two-level hierarchy tree.
 
+{preset_sections}
+
 ════════════════════════════════════════════════════════
 ## PRIME DIRECTIVE — READ FIRST
 ════════════════════════════════════════════════════════

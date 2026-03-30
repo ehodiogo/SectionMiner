@@ -3,7 +3,7 @@ import os
 import tempfile
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -42,6 +42,30 @@ def _iter_nodes(tree: dict) -> list[tuple[dict, int]]:
     return nodes
 
 
+def _parse_presets(raw: str | None, extra: list[str] | None = None) -> list[str]:
+    values = []
+    if raw:
+        values.append(raw)
+    if extra:
+        values.extend(extra)
+
+    presets: list[str] = []
+    seen: set[str] = set()
+    for chunk in values:
+        parts = [p for p in chunk.replace("\r", "\n").splitlines() if p.strip()] if "\n" in chunk else chunk.split(",")
+        for part in parts:
+            for token in part.split(";"):
+                cleaned = _compact_text(token)
+                if not cleaned:
+                    continue
+                key = cleaned.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                presets.append(cleaned)
+    return presets
+
+
 def _cleanup_old_jobs(request: Request, ttl_hours: int = 6) -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ttl_hours)
     jobs = request.app.state.jobs
@@ -58,7 +82,12 @@ def index(request: Request) -> HTMLResponse:
 
 
 @router.post("/api/extract")
-async def extract_sections(request: Request, file: UploadFile = File(...)) -> dict:
+async def extract_sections(
+    request: Request,
+    file: UploadFile = File(...),
+    preset_sections: str | None = Form(None),
+    preset_section: list[str] | None = Form(None),
+) -> dict:
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Envie um arquivo PDF.")
 
@@ -76,6 +105,8 @@ async def extract_sections(request: Request, file: UploadFile = File(...)) -> di
     temp_pdf.close()
 
     settings = request.app.state.settings
+    presets = _parse_presets(preset_sections, preset_section)
+
     miner = None
     usage = None
     try:
@@ -86,6 +117,7 @@ async def extract_sections(request: Request, file: UploadFile = File(...)) -> di
             extraction_backend=settings.extraction_backend,
             gemini_api_key=settings.gemini_api_key,
             gemini_model=settings.gemini_model,
+            preset_sections=presets or settings.preset_sections,
         )
 
         if settings.heuristic_only:
@@ -142,6 +174,7 @@ async def extract_sections(request: Request, file: UploadFile = File(...)) -> di
             "pages": pages,
             "extraction_backend": settings.extraction_backend,
             "heuristic_only": settings.heuristic_only,
+            "preset_sections": presets or settings.preset_sections or [],
             "metrics": {
                 "pages": pages,
                 "sections": section_count,

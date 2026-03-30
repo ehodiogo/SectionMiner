@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
       :root {
@@ -286,6 +287,27 @@
       .upload-input::file-selector-button:hover {
         background: rgba(59,130,246,0.25);
       }
+
+      .preset-wrapper { display: flex; flex-direction: column; gap: 6px; }
+      .preset-input {
+        width: 100%;
+        min-height: 96px;
+        padding: 10px 12px;
+        background: var(--surface2);
+        border: 1px solid rgba(99,179,237,0.18);
+        border-radius: var(--radius-sm);
+        color: var(--text);
+        font-size: 13px;
+        resize: vertical;
+        line-height: 1.5;
+        transition: all 0.2s ease;
+      }
+      .preset-input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+      }
+      .input-helper { font-size: 12px; color: var(--text-dim); }
 
       .upload-actions { display: flex; align-items: center; gap: 12px; }
 
@@ -751,6 +773,11 @@
               </button>
             </div>
           </div>
+          <div class="preset-wrapper">
+            <label class="upload-label" for="preset-sections">Seções pré-definidas (opcional)</label>
+            <textarea id="preset-sections" class="preset-input" placeholder="Introdução; Metodologia; Resultados; Discussão; Conclusão"></textarea>
+            <p class="input-helper">Separe por vírgula, ponto-e-vírgula ou quebras de linha. Usaremos isso para priorizar nomes/ordem sem inventar seções novas.</p>
+          </div>
           <span id="status" style="display:block;margin-top:6px"></span>
         </form>
 
@@ -849,6 +876,7 @@
 
       const form = document.getElementById("upload-form");
       const input = document.getElementById("pdf-input");
+      const presetInput = document.getElementById("preset-sections");
       const statusEl = document.getElementById("status");
       const sectionsEl = document.getElementById("sections");
       const pageInfoEl = document.getElementById("page-info");
@@ -977,13 +1005,14 @@
           card.className = "section-card";
 
           const title = sec.title || `Seção ${idx + 1}`;
-          const textSnippet = compactText(sec.text || "Sem texto extraído.");
+          const fullText = compactText(sec.text || "Sem texto extraído.");
+          const preview = fullText.length > 420 ? `${fullText.slice(0, 420)}…` : fullText;
 
           card.innerHTML = `
             <h3><span class="section-num">${idx + 1}</span> ${title}</h3>
-            <pre>${textSnippet}</pre>
+            <pre>${preview}</pre>
             <div class="section-actions">
-              <button type="button" class="pill-button btn-read-more">Ler mais</button>
+              <button type="button" class="pill-button btn-read-more">Ver detalhe</button>
             </div>
           `;
 
@@ -1009,7 +1038,7 @@
           readMoreBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             detailTitle.textContent = title;
-            detailText.textContent = textSnippet;
+            detailText.textContent = fullText;
             detailModal.classList.remove("hidden");
           });
 
@@ -1115,6 +1144,9 @@
 
             const formData = new FormData();
             formData.append("file", file);
+            if (presetInput && presetInput.value.trim()) {
+              formData.append("preset_sections", presetInput.value);
+            }
 
             const response = await fetch("/api/extract", {
                 method: "POST",
@@ -1126,6 +1158,9 @@
             const data = await response.json();
 
             state.sections = data.sections || [];
+            if (presetInput && Array.isArray(data.preset_sections)) {
+              presetInput.value = data.preset_sections.join("\n");
+            }
             updateMetrics(data);
             renderSectionsList();
 

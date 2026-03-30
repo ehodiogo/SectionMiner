@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 from pathlib import Path
 import sys
 from typing import Any
@@ -8,6 +9,23 @@ from decouple import config
 
 from sectionminer import SectionMiner
 from sectionminer.miner import _compact_text
+
+
+def _parse_presets(values: list[str] | None) -> list[str]:
+    presets: list[str] = []
+    seen: set[str] = set()
+    for raw in values or []:
+        parts = re.split(r"[;,\n]", raw)
+        for part in parts:
+            cleaned = _compact_text(part)
+            if not cleaned:
+                continue
+            key = cleaned.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            presets.append(cleaned)
+    return presets
 
 
 def _resolve_api_key(cli_api_key: str | None) -> str:
@@ -44,8 +62,8 @@ def _print_usage_summary(usage: dict | None) -> None:
 
 def _extract_command(args: argparse.Namespace) -> int:
     api_key = _resolve_api_key(args.api_key)
-
-    miner = SectionMiner(args.pdf, api_key=api_key, model=args.model)
+    presets = _parse_presets(getattr(args, "preset_sections", None))
+    miner = SectionMiner(args.pdf, api_key=api_key, model=args.model, preset_sections=presets)
     try:
         if args.heuristic_only:
             miner.extract_blocks()
@@ -85,8 +103,8 @@ def _extract_command(args: argparse.Namespace) -> int:
 
 def _section_text_command(args: argparse.Namespace) -> int:
     api_key = _resolve_api_key(args.api_key)
-
-    miner = SectionMiner(args.pdf, api_key=api_key, model=args.model)
+    presets = _parse_presets(getattr(args, "preset_sections", None))
+    miner = SectionMiner(args.pdf, api_key=api_key, model=args.model, preset_sections=presets)
     try:
         if args.heuristic_only:
             miner.extract_blocks()
@@ -136,6 +154,7 @@ def _runserver_command(args: argparse.Namespace) -> int:
         gemini_api_key=_resolve_gemini_api_key(args.gemini_api_key),
         gemini_model=args.gemini_model,
         heuristic_only=args.heuristic_only,
+        preset_sections=_parse_presets(getattr(args, "preset_sections", None)),
     )
 
     app = create_app(settings)
@@ -160,6 +179,12 @@ def _build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--heuristic-only", action="store_true", help="Nao usa LLM; retorna secoes heuristicas")
     extract.add_argument("--output", help="Arquivo de saida JSON")
     extract.add_argument("--pretty", action="store_true", help="Formata JSON com indentacao")
+    extract.add_argument(
+        "--preset-section",
+        action="append",
+        dest="preset_sections",
+        help="Titulo de secao esperado. Pode repetir ou separar por virgula/ponto-e-virgula.",
+    )
     extract.set_defaults(func=_extract_command)
 
     section_text = subparsers.add_parser("section-text", help="Retorna texto de uma secao por titulo")
@@ -168,6 +193,12 @@ def _build_parser() -> argparse.ArgumentParser:
     section_text.add_argument("--api-key", help="Chave OpenAI (fallback: OPENAI_API_KEY)")
     section_text.add_argument("--model", default="gpt-4o-mini", help="Modelo OpenAI")
     section_text.add_argument("--heuristic-only", action="store_true", help="Nao usa LLM; busca na estrutura heuristica")
+    section_text.add_argument(
+        "--preset-section",
+        action="append",
+        dest="preset_sections",
+        help="Titulo de secao esperado para guiar o agrupamento (opcional)",
+    )
     section_text.add_argument("--show-cost", action="store_true", help="Mostra custo total da chamada no stderr")
     section_text.set_defaults(func=_section_text_command)
 
@@ -186,6 +217,12 @@ def _build_parser() -> argparse.ArgumentParser:
     runserver.add_argument("--gemini-api-key", help="Chave Gemini (fallback: GEMINI_API_KEY)")
     runserver.add_argument("--gemini-model", default="gemini-2.0-flash", help="Modelo Gemini")
     runserver.add_argument("--heuristic-only", action="store_true", help="Nao usa LLM; retorna secoes heuristicas")
+    runserver.add_argument(
+        "--preset-section",
+        action="append",
+        dest="preset_sections",
+        help="Titulo de secao esperado para pre-preencher a UI e a API (pode repetir ou separar por virgula)",
+    )
     runserver.set_defaults(func=_runserver_command)
 
     return parser

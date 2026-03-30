@@ -15,6 +15,7 @@ class ServerSettings:
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.0-flash"
     heuristic_only: bool = False
+    preset_sections: list[str] | None = None
 
 
 BASE_DIR = Path(__file__).resolve().parent

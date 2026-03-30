@@ -9,7 +9,11 @@ def main():
     if not api_key:
         raise SystemExit("OPENAI_API_KEY nao encontrada.")
 
-    miner = SectionMiner("files/Artigo_Provatis.pdf", api_key)
+    miner = SectionMiner(
+        "files/Artigo_Provatis.pdf",
+        api_key,
+        preset_sections=["Introdução"],
+    )
 
     try:
         structure, tokens = miner.extract_structure(return_tokens=True)
@@ -17,27 +21,17 @@ def main():
         print("\n=== TOKENS ===")
         print(tokens)
 
+        # DEBUG: ver todos os títulos extraídos antes do LLM
+        print("\n=== SECTION STRUCTURES (títulos brutos extraídos do PDF) ===")
+        for s in miner.section_structures:
+            print(f"  title={repr(s['title'])}  start={s['start']}  end={s['end']}")
+
         print("\n=== STRUCTURE ===")
         print(json.dumps(structure, indent=2, ensure_ascii=False))
 
-        print("\n=== INTRO ===")
-        title = "introducao"
-
-        start, end = miner.get_section_start_and_end_chars(title)
-        print("start:", start, "end:", end)
-        texto_completo = miner.get_full_text()
-        print("Texto da secao:", texto_completo[start:end])
-        #
-        # text = miner.get_section_text(title)
-        # print(text)
-        #
-        miner.extract_blocks()
-        miner.build_full_text()
-        miner.build_sections()
-
-        for s in miner.get_sections():
-            print("Extraindo texto da secao:", s)
-            print(miner.get_section_text(s))
+        print("\n=== RESUMO ===")
+        text = miner.get_section_text("Introdução")
+        print(text)
 
     finally:
         miner.close()
