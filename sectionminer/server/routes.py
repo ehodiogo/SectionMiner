@@ -118,6 +118,7 @@ async def extract_sections(
             gemini_api_key=settings.gemini_api_key,
             gemini_model=settings.gemini_model,
             preset_sections=presets or settings.preset_sections,
+            use_litellm=settings.use_litellm,
         )
 
         if settings.heuristic_only:
@@ -127,9 +128,11 @@ async def extract_sections(
             tree = _build_heuristic_tree(raw_sections)
         else:
             if not settings.api_key:
+                env_label = "LITELLM_API_KEY" if settings.use_litellm else "OPENAI_API_KEY"
+                flag_hint = "--litellm-api-key" if settings.use_litellm else "--api-key"
                 raise HTTPException(
                     status_code=400,
-                    detail="OPENAI_API_KEY nao encontrada. Rode com --api-key ou configure o ambiente.",
+                    detail=f"{env_label} nao encontrada. Rode com {flag_hint} ou configure o ambiente.",
                 )
             tree, usage = miner.extract_structure(return_tokens=True)
 

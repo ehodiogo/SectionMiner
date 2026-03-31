@@ -29,7 +29,7 @@
 
 <br/>
 
-[**Quickstart**](#-quickstart) · [**Installation**](#-installation) · [**Preset Sections**](#-preset-sections) · [**CLI**](#-cli) · [**API Reference**](#-api-reference) · [**Web UI**](#-web-ui) · [**Examples**](#-examples)
+[**Quickstart**](#-quickstart) · [**Installation**](#-installation) · [**Preset Sections**](#-preset-sections) · [**LiteLLM**](#-litellm-support) · [**CLI**](#-cli) · [**API Reference**](#-api-reference) · [**Web UI**](#-web-ui) · [**Examples**](#-examples)
 
 <br/>
 
@@ -43,7 +43,7 @@
 
 ```
 PDF File  →  Text Extraction  →  Heading Detection  →  LLM Consolidation  →  Structured Tree
-              (PyMuPDF / Gemini)   (font heuristics)    (OpenAI gpt-4o-mini)
+              (PyMuPDF / Gemini)   (font heuristics)    (OpenAI / LiteLLM)
 ```
 
 ### Extraction Backends
@@ -53,7 +53,12 @@ PDF File  →  Text Extraction  →  Heading Detection  →  LLM Consolidation  
 | `pymupdf` *(default)* | Local text extraction using PDF layout spans | Clean, text-native PDFs |
 | `gemini` | OCR and extraction via Google Gemini | Scanned docs, complex layouts |
 
-> In both cases, LLM consolidation of the final section tree is handled by **OpenAI**.
+### LLM Consolidation Backends
+
+| Backend | Description |
+|---------|-------------|
+| OpenAI *(default)* | Uses `ChatOpenAI` with any OpenAI model |
+| LiteLLM | Uses `ChatLiteLLM` — supports OpenAI, Anthropic, Groq, Azure, Gemini, and more via a unified interface |
 
 ---
 
@@ -101,10 +106,16 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+**With LiteLLM support:**
+
+```bash
+pip install sectionminer litellm langchain-community
+```
+
 ### Requirements
 
 - Python **3.10+**
-- `OPENAI_API_KEY` — required for LLM consolidation
+- `OPENAI_API_KEY` — required for LLM consolidation (unless using LiteLLM with a different provider)
 - `GEMINI_API_KEY` — required only when using `extraction_backend="gemini"`
 
 ### API Keys
@@ -114,6 +125,8 @@ Via environment variable:
 ```bash
 export OPENAI_API_KEY="sk-..."
 export GEMINI_API_KEY="..."      # optional, Gemini backend only
+export LITELLM_API_KEY="..."     # optional, LiteLLM with non-OpenAI providers
+export LITELLM_MODEL="openai/gpt-4o-mini"  # optional, LiteLLM model with provider prefix
 ```
 
 Or via `.env` in your project root:
@@ -121,6 +134,8 @@ Or via `.env` in your project root:
 ```env
 OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...
+LITELLM_API_KEY=...
+LITELLM_MODEL=openai/gpt-4o-mini
 ```
 
 ---
@@ -160,25 +175,66 @@ Matching is flexible and normalised — it strips leading numbering, folds casin
 - **Document order preserved** — matched sections appear in the order they occur in the PDF, not in preset list order.
 - **Double-filtered** — the LLM is instructed to filter, and a Python post-processing step removes any hallucinated nodes before results are returned.
 
-### With Gemini backend
+---
 
-`preset_sections` works identically with both backends:
+## 🔀 LiteLLM Support
+
+LiteLLM lets you swap the LLM consolidation provider without changing your code — just set a model name with the appropriate provider prefix.
+
+### Supported providers (examples)
+
+| Provider | `model` value |
+|----------|--------------|
+| OpenAI | `openai/gpt-4o-mini` |
+| Anthropic | `anthropic/claude-3-haiku-20240307` |
+| Groq | `groq/llama3-8b-8192` |
+| Azure OpenAI | `azure/your-deployment-name` |
+| Google Gemini | `gemini/gemini-2.0-flash` |
+
+### Python
 
 ```python
+from sectionminer import SectionMiner
+
 miner = SectionMiner(
     "paper.pdf",
-    api_key="sk-...",
-    extraction_backend="gemini",
-    gemini_api_key="AIza...",
+    api_key="your-provider-api-key",
+    model="anthropic/claude-3-haiku-20240307",
+    use_litellm=True,
     preset_sections=["Introdução"],
 )
 
 try:
-    miner.extract_structure()
+    structure, usage = miner.extract_structure(return_tokens=True)
     print(miner.get_section_text("Introdução"))
 finally:
     miner.close()
 ```
+
+### LiteLLM + Gemini extraction backend
+
+Use Gemini for PDF text extraction **and** LiteLLM for tree consolidation simultaneously:
+
+```python
+miner = SectionMiner(
+    "paper.pdf",
+    api_key="your-litellm-provider-key",
+    model="openai/gpt-4o-mini",         # LiteLLM: merge consolidation
+    extraction_backend="gemini",         # Gemini: PDF text extraction
+    gemini_api_key="AIza...",
+    use_litellm=True,
+    preset_sections=["Introdução"],
+)
+```
+
+### Via environment variables
+
+```env
+LITELLM_MODEL=groq/llama3-8b-8192
+LITELLM_API_KEY=gsk_...
+```
+
+> **Note:** `get_openai_callback` in `_run` tracks token usage via OpenAI's SDK internals. When using LiteLLM with non-OpenAI providers, token counts may be reported as zero. Cost tracking works reliably only with OpenAI-compatible backends.
 
 ---
 
@@ -193,7 +249,7 @@ sectionminer --help
 ### Extract section structure
 
 ```bash
-# Full extraction with LLM consolidation
+# Full extraction with LLM consolidation (OpenAI)
 sectionminer extract paper.pdf --tokens --pretty
 
 # Heuristic-only (no LLM / no API key needed)
@@ -204,6 +260,17 @@ sectionminer extract paper.pdf --show-cost --pretty
 
 # Save output to JSON
 sectionminer extract paper.pdf --output out.json --pretty
+
+# Use Gemini for extraction
+sectionminer extract paper.pdf --extraction-backend gemini --gemini-api-key AIza... --pretty
+
+# Use LiteLLM for consolidation
+sectionminer extract paper.pdf --use-litellm --litellm-model groq/llama3-8b-8192 --litellm-api-key gsk_...
+
+# Gemini extraction + LiteLLM consolidation
+sectionminer extract paper.pdf \
+  --extraction-backend gemini --gemini-api-key AIza... \
+  --use-litellm --litellm-model openai/gpt-4o-mini
 ```
 
 ### Get text of a specific section
@@ -216,9 +283,21 @@ sectionminer section-text paper.pdf "introduction" --show-cost
 
 # Without LLM
 sectionminer section-text paper.pdf "introduction" --heuristic-only
+
+# With LiteLLM
+sectionminer section-text paper.pdf "Introdução" \
+  --use-litellm --litellm-model anthropic/claude-3-haiku-20240307
 ```
 
 > **Note:** `--show-cost` outputs cost info to `stderr` so it never pollutes JSON output.
+
+### LiteLLM CLI flags (available in all subcommands)
+
+| Flag | Description |
+|------|-------------|
+| `--use-litellm` | Enable LiteLLM backend (replaces OpenAI) |
+| `--litellm-model` | Model with provider prefix (e.g. `groq/llama3-8b-8192`). Fallback: `LITELLM_MODEL` env var |
+| `--litellm-api-key` | Provider API key. Fallback: `LITELLM_API_KEY` → `OPENAI_API_KEY` |
 
 ---
 
@@ -232,6 +311,9 @@ sectionminer runserver --host 127.0.0.1 --port 8000 --reload
 
 # Use Gemini for extraction
 sectionminer runserver --extraction-backend gemini --gemini-model gemini-2.0-flash
+
+# Use LiteLLM for consolidation
+sectionminer runserver --use-litellm --litellm-model groq/llama3-8b-8192
 
 # Heuristic-only (no LLM)
 sectionminer runserver --heuristic-only
@@ -311,11 +393,13 @@ The entry stylesheet lives at `sectionminer/server/static/tailwind.css` and comp
 ```python
 miner = SectionMiner(
     "paper.pdf",
-    api_key="sk-...",                     # OpenAI API key
+    api_key="sk-...",                     # API key for LLM consolidation
+    model="gpt-4o-mini",                  # Model name (OpenAI) or provider/model (LiteLLM)
     extraction_backend="pymupdf",         # "pymupdf" | "gemini"
     gemini_api_key="...",                 # required if backend="gemini"
     gemini_model="gemini-2.5-flash-lite", # optional, default model
     preset_sections=["Introdução", "Metodologia"],  # optional filter
+    use_litellm=False,                    # set True to use LiteLLM instead of OpenAI
 )
 ```
 
@@ -324,12 +408,13 @@ miner = SectionMiner(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `path` | `str` | — | Path to the PDF file |
-| `api_key` | `str` | — | OpenAI API key for LLM consolidation |
-| `model` | `str` | `"gpt-4o-mini"` | OpenAI model to use |
+| `api_key` | `str` | — | API key for LLM consolidation |
+| `model` | `str` | `"gpt-4o-mini"` | Model name. For LiteLLM, include provider prefix (e.g. `"groq/llama3-8b-8192"`) |
 | `extraction_backend` | `str` | `"pymupdf"` | `"pymupdf"` or `"gemini"` |
 | `gemini_api_key` | `str` | `None` | Google Gemini API key |
 | `gemini_model` | `str` | `"gemini-2.0-flash"` | Gemini model name |
 | `preset_sections` | `list[str]` | `None` | If provided, return **only** sections matching these names |
+| `use_litellm` | `bool` | `False` | Use LiteLLM instead of direct OpenAI for LLM consolidation |
 
 ### Methods
 
@@ -417,9 +502,55 @@ miner = SectionMiner(
 )
 try:
     miner.extract_structure()
-    # Only matched sections are returned — no hallucination, no extras
     print(miner.get_section_text("Introdução"))
     print(miner.get_section_text("Metodologia"))
+finally:
+    miner.close()
+```
+
+</details>
+
+<details>
+<summary><strong>LiteLLM — swap provider without changing code</strong></summary>
+
+```python
+from sectionminer import SectionMiner
+
+miner = SectionMiner(
+    "paper.pdf",
+    api_key="gsk_...",   # Groq API key
+    model="groq/llama3-8b-8192",
+    use_litellm=True,
+    preset_sections=["Introdução"],
+)
+try:
+    structure, usage = miner.extract_structure(return_tokens=True)
+    print(miner.get_section_text("Introdução"))
+finally:
+    miner.close()
+```
+
+</details>
+
+<details>
+<summary><strong>Gemini extraction + LiteLLM consolidation</strong></summary>
+
+```python
+from sectionminer import SectionMiner
+
+miner = SectionMiner(
+    "paper.pdf",
+    api_key="sk-...",                    # LiteLLM provider key
+    model="openai/gpt-4o-mini",          # LiteLLM model
+    extraction_backend="gemini",          # Gemini for PDF text extraction
+    gemini_api_key="AIza...",
+    use_litellm=True,
+    preset_sections=["Introdução"],
+)
+try:
+    structure, usage = miner.extract_structure(return_tokens=True)
+    print(usage)
+    print(miner.get_section_text("Introdução"))
 finally:
     miner.close()
 ```
@@ -443,28 +574,6 @@ try:
     structure, usage = miner.extract_structure(return_tokens=True)
     print(usage)
     print(miner.get_section_text("Introdução"))
-finally:
-    miner.close()
-```
-
-</details>
-
-<details>
-<summary><strong>With Gemini backend (full extraction)</strong></summary>
-
-```python
-from sectionminer import SectionMiner
-
-miner = SectionMiner(
-    "paper.pdf",
-    api_key="sk-...",
-    extraction_backend="gemini",
-    gemini_api_key="AIza...",
-)
-try:
-    structure, usage = miner.extract_structure(return_tokens=True)
-    print(usage)
-    print(structure.get("title"))
 finally:
     miner.close()
 ```
@@ -516,15 +625,16 @@ SectionMiner/
 ├── sectionminer/
 │   ├── __init__.py        # Public API
 │   ├── miner.py           # SectionMiner class
-│   ├── client.py          # LLM client + tree merge
+│   ├── client.py          # LLM client + tree merge (OpenAI / LiteLLM)
 │   ├── prompts.py         # Consolidation prompt
 │   └── server/            # FastAPI + UI (routes, static, templates)
 ├── examples/
 │   ├── basic_usage.py
 │   └── api_smoke_test.py
 ├── files/                 # Sample PDFs
-├── test.py                # PyMuPDF pipeline example
-├── test_gemini.py         # Gemini pipeline example
+├── test.py                # PyMuPDF + OpenAI pipeline example
+├── test_litellm.py        # LiteLLM pipeline example
+├── test_gemini_litellm.py # Gemini extraction + LiteLLM consolidation example
 └── requirements.txt
 ```
 
@@ -574,6 +684,20 @@ Use the exact title shown there (or a close variation) in `preset_sections`.
 </details>
 
 <details>
+<summary><strong>LiteLLM: "LLM Provider NOT provided"</strong></summary>
+
+You passed a model name without the provider prefix (e.g. `"gpt-4o-mini"` instead of `"openai/gpt-4o-mini"`). LiteLLM requires the prefix to identify the provider. Always use `provider/model-name` format.
+
+</details>
+
+<details>
+<summary><strong>LiteLLM: token usage shows zeros</strong></summary>
+
+`get_openai_callback` only captures usage from OpenAI-compatible calls. With non-OpenAI providers via LiteLLM, token counts will report as zero. This is a known limitation — the extraction itself works correctly.
+
+</details>
+
+<details>
 <summary><strong>OpenAI key error</strong></summary>
 
 - Confirm `OPENAI_API_KEY` is set in the same environment as your script
@@ -586,7 +710,9 @@ Use the exact title shown there (or a close variation) in `preset_sections`.
 ## 🗺 Roadmap
 
 - [ ] Automated tests for `detect_headings`, `build_sections`, `get_section_text`
-- [ ] Expose heuristic parameters via config (threshold, noise filters).
+- [ ] Expose heuristic parameters via config (threshold, noise filters)
+- [ ] Native LiteLLM token/cost tracking (replace `get_openai_callback`)
+- [x] LiteLLM support — use any provider for LLM consolidation
 - [x] CLI: `sectionminer extract file.pdf --output out.json`
 - [x] Heuristic-only mode (no LLM, fully offline)
 - [x] Improved merge — keeps only valid sections/subsections without broken fragments

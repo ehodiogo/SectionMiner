@@ -16,6 +16,7 @@ class ServerSettings:
     gemini_model: str = "gemini-2.0-flash"
     heuristic_only: bool = False
     preset_sections: list[str] | None = None
+    use_litellm: bool = False
 
 
 BASE_DIR = Path(__file__).resolve().parent

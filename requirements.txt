@@ -9,3 +9,4 @@ fastapi
 uvicorn
 python-multipart
 jinja2
+litellm==1.82.5 # para nao ter exploit de segurança

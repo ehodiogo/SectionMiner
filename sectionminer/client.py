@@ -2,18 +2,29 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.callbacks import get_openai_callback
 from langchain_openai import ChatOpenAI
+from langchain_community.chat_models import ChatLiteLLM
 from typing import Any, cast
 from sectionminer.prompts import MERGE_TREE_PROMPT
 import re
 
 class LLMClient:
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", max_tokens: int = 8000):
-        self.llm = ChatOpenAI(
-            model=model,
-            api_key=cast(Any, api_key),
-            temperature=0,
-            max_tokens=max_tokens,
-        )
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", max_tokens: int = 8000, use_litellm: bool = False):
+        print("Model ", model)
+        if not use_litellm:
+            self.llm = ChatOpenAI(
+                model=model,
+                api_key=cast(Any, api_key),
+                temperature=0,
+                max_tokens=max_tokens,
+            )
+        else:
+            self.llm = ChatLiteLLM(
+                model=model,
+                api_key=api_key,
+                temperature=0,
+                max_tokens=max_tokens,
+            )
+
         self.parser = JsonOutputParser()
 
     def _normalise(self, text: str) -> str:

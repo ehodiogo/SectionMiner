@@ -77,13 +77,14 @@ class SectionMiner:
         gemini_api_key: str | None = None,
         gemini_model: str = "gemini-2.0-flash",
         preset_sections: list[str] | None = None,
+        use_litellm: bool = False,
     ):
         if extraction_backend not in self.SUPPORTED_BACKENDS:
             raise ValueError(
                 f"extraction_backend deve ser um de {self.SUPPORTED_BACKENDS}, "
                 f"recebido: {repr(extraction_backend)}"
             )
-
+        print("Model do miner", model)
         self.pdf = pdf
         self.api_key = api_key
         self.model = model
@@ -93,6 +94,7 @@ class SectionMiner:
         self.preset_sections = self._normalize_preset_sections(preset_sections)
         self.doc = fitz.open(pdf)
         self.client: LLMClient | None = None
+        self.use_litellm = use_litellm
 
         self.full_text: str | None = None
         self.structure: dict | None = None
@@ -456,7 +458,7 @@ class SectionMiner:
             self.build_full_text()
 
         self.build_sections()
-        self.client = LLMClient(api_key=self.api_key, model=self.model, max_tokens=4096)
+        self.client = LLMClient(api_key=self.api_key, model=self.model, max_tokens=4096, use_litellm=self.use_litellm)
 
         heading_index = []
         allowed_titles: list[str] = []
