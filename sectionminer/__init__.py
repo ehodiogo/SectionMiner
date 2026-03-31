@@ -3,4 +3,4 @@
 from sectionminer.miner import SectionMiner
 
 __all__ = ["SectionMiner"]
-__version__ = "0.1.8"
+__version__ = "0.1.9"
