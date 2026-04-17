@@ -7,22 +7,43 @@ from typing import Any, cast
 from sectionminer.prompts import MERGE_TREE_PROMPT
 import re
 
+
 class LLMClient:
+
+    def _get_model_config(self, model: str) -> dict:
+        model = model.split("/")[-1]
+        if model.startswith("gpt-5.1"):
+            return {
+                "temperature": 0,
+                "reasoning_effort": "none",
+            }
+        elif model.startswith("gpt-5"):
+            return {
+                "temperature": 1,  # obrigatório
+            }
+        else:
+            return {
+                "temperature": 0,
+            }
+
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", max_tokens: int = 8000, use_litellm: bool = False):
         print("Model ", model)
+        config = self._get_model_config(model)
+        print("Config ", config)
+
         if not use_litellm:
             self.llm = ChatOpenAI(
                 model=model,
                 api_key=cast(Any, api_key),
-                temperature=0,
                 max_tokens=max_tokens,
+                **config,
             )
         else:
             self.llm = ChatLiteLLM(
                 model=model,
                 api_key=api_key,
-                temperature=0,
                 max_tokens=max_tokens,
+                **config,
             )
 
         self.parser = JsonOutputParser()
