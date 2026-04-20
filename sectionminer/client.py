@@ -1,11 +1,13 @@
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.callbacks import get_openai_callback
-from langchain_openai import ChatOpenAI
-from langchain_community.chat_models import ChatLiteLLM
-from typing import Any, cast
-from sectionminer.prompts import MERGE_TREE_PROMPT
+import json
 import re
+from typing import Any, cast
+
+from langchain_community.callbacks import get_openai_callback
+from langchain_community.chat_models import ChatLiteLLM
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+
+from sectionminer.prompts import MERGE_TREE_PROMPT
 
 
 class LLMClient:
@@ -46,8 +48,6 @@ class LLMClient:
                 **config,
             )
 
-        self.parser = JsonOutputParser()
-
     def _normalise(self, text: str) -> str:
         """Strip numbering, lowercase, remove diacritics, collapse spaces."""
         import unicodedata
@@ -61,21 +61,116 @@ class LLMClient:
         return any(norm == p or norm.startswith(p) for p in preset_norms)
 
     def _filter_by_presets(self, node: dict, preset_norms: list[str]) -> dict:
-        """Post-LLM safety net: remove any node not matching a preset."""
-        filtered_children = []
-        for child in node.get("children", []):
-            if self._matches_preset(child["title"], preset_norms):
-                # keep, and filter its own children too
-                filtered_child = dict(child)
-                filtered_child["children"] = [
-                    gc for gc in child.get("children", [])
-                    if self._matches_preset(gc["title"], preset_norms)
-                ]
-                filtered_children.append(filtered_child)
-            # else: silently drop
-        return {**node, "children": filtered_children}
+        """Post-LLM safety net: keep only branches that match a preset."""
 
-    def _run(self, chain, inputs: dict) -> tuple[dict, dict]:
+        def filter_node(current: dict, ancestor_kept: bool = False) -> dict | None:
+            title = current.get("title", "")
+            matches = self._matches_preset(title, preset_norms)
+            keep_branch = ancestor_kept or matches
+
+            children: list[dict] = []
+            for child in current.get("children", []):
+                filtered = filter_node(child, keep_branch)
+                if filtered is not None:
+                    children.append(filtered)
+
+            if current.get("title") == "Document":
+                return {**current, "children": children}
+
+            if keep_branch or children:
+                return {**current, "children": children}
+
+            return None
+
+        filtered = filter_node(node)
+        return filtered or {"title": "Document", "children": []}
+
+    def _extract_json_block(self, raw_text: str) -> str:
+        text = raw_text.strip()
+        if text.startswith("```"):
+            text = text.removeprefix("```json").removeprefix("```")
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+
+        start_candidates = [idx for idx in (text.find("{"), text.find("[")) if idx != -1]
+        if not start_candidates:
+            return text
+
+        start = min(start_candidates)
+        opener = text[start]
+        closer = "}" if opener == "{" else "]"
+
+        depth = 0
+        in_string = False
+        escaped = False
+        for idx in range(start, len(text)):
+            ch = text[idx]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+
+            if ch == '"':
+                in_string = True
+                continue
+            if ch == opener:
+                depth += 1
+            elif ch == closer:
+                depth -= 1
+                if depth == 0:
+                    return text[start : idx + 1]
+
+        return text[start:]
+
+    def _parse_tree_payload(self, raw_result: Any) -> dict:
+        if isinstance(raw_result, dict):
+            return raw_result
+
+        if hasattr(raw_result, "content"):
+            raw_result = getattr(raw_result, "content")
+
+        if not isinstance(raw_result, str):
+            raise ValueError(f"Unexpected LLM payload type: {type(raw_result)!r}")
+
+        candidate = self._extract_json_block(raw_result)
+        parsed = json.loads(candidate)
+        if not isinstance(parsed, dict):
+            raise ValueError("LLM output must be a JSON object")
+        return parsed
+
+    def _build_fallback_tree(self, heading_index: list[dict], preset_sections: list[str] | None = None) -> dict:
+        root = {"title": "Document", "children": []}
+        top_level: dict | None = None
+
+        for item in heading_index:
+            title = item.get("title")
+            if not isinstance(title, str):
+                continue
+            title = title.strip()
+            if not title:
+                continue
+
+            node = {"title": title, "children": []}
+            level = int(item.get("level", 1) or 1)
+
+            if level <= 1 or top_level is None:
+                root["children"].append(node)
+                top_level = node
+            else:
+                top_level.setdefault("children", []).append(node)
+
+        if preset_sections:
+            preset_norms = [self._normalise(p) for p in preset_sections]
+            root = self._filter_by_presets(root, preset_norms)
+
+        return root
+
+    def _run(self, chain, inputs: dict) -> tuple[Any, dict]:
         with get_openai_callback() as cb:
             result = chain.invoke(inputs)
             usage = {
@@ -173,7 +268,8 @@ class LLMClient:
             )
 
         prompt = ChatPromptTemplate.from_template(MERGE_TREE_PROMPT)
-        chain = prompt | self.llm | self.parser
+        chain = prompt | self.llm
+
         raw, usage = self._run(
             chain,
             {
@@ -182,7 +278,12 @@ class LLMClient:
                 "allowed_titles": allowed_block,
             },
         )
-        sanitized = self._sanitize_tree(raw)
+        try:
+            parsed = self._parse_tree_payload(raw)
+        except Exception:
+            parsed = self._build_fallback_tree(heading_index, preset_sections=preset_sections)
+
+        sanitized = self._sanitize_tree(parsed)
         if preset_sections:
             preset_norms = [self._normalise(p) for p in preset_sections]
             sanitized = self._filter_by_presets(sanitized, preset_norms)

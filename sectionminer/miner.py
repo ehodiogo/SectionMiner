@@ -25,6 +25,9 @@ def _compact_text(text: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r"\(\s+", "(", text)
+    text = re.sub(r"\s+\)", ")", text)
     return text.strip()
 
 
@@ -67,6 +70,49 @@ def _extract_json_array_text(raw_text: str) -> str:
 
 class SectionMiner:
     SUPPORTED_BACKENDS = ("pymupdf", "gemini")
+    CANONICAL_SECTION_NAMES = {
+        "abstract",
+        "apendice",
+        "apendices",
+        "apresentacao",
+        "agradecimentos",
+        "capa",
+        "consideracoes finais",
+        "conclusao",
+        "conclusoes",
+        "dedicatoria",
+        "discussao",
+        "epigrafe",
+        "estado da arte",
+        "fundamentacao teorica",
+        "glossario",
+        "introducao",
+        "indice",
+        "indice geral",
+        "lista de abreviaturas e siglas",
+        "lista de figuras",
+        "lista de ilustracoes",
+        "lista de simbolos",
+        "lista de tabelas",
+        "metodologia",
+        "materiais e metodos",
+        "metodos",
+        "objetivo geral",
+        "objetivos",
+        "objetivos especificos",
+        "prefacio",
+        "referencias",
+        "referencias bibliograficas",
+        "referencial teorico",
+        "revisao bibliografica",
+        "revisao de literatura",
+        "resumo",
+        "resumo expandido",
+        "resumo em lingua estrangeira",
+        "resultados",
+        "resultados e discussao",
+        "sumario",
+    }
 
     def __init__(
         self,
@@ -125,13 +171,17 @@ class SectionMiner:
     def normalize(self, text: str) -> str:
         return unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode("ascii").lower()
 
+    def _is_canonical_heading(self, text: str) -> bool:
+        norm = self.normalize(text.strip())
+        return any(norm == item or norm.startswith(f"{item} ") for item in self.CANONICAL_SECTION_NAMES)
+
     def _fix_unicode(self, text: str) -> str:
         return unicodedata.normalize("NFC", text)
 
     def _is_corrupted(self, text: str) -> bool:
         return "\u00e2\u20ac" in text or "\ufffd" in text
 
-    def _looks_like_table_row(self, text: str) -> bool:
+    def _looks_like_table_row(self, text: str, span_count: int = 1) -> bool:
         tokens = text.split()
         if not tokens:
             return False
@@ -152,18 +202,25 @@ class SectionMiner:
         if numeric_like >= max(2, len(tokens) * 0.6):
             return True
 
+        if span_count >= 2 and len(tokens) <= 4 and len(text) <= 40:
+            return True
+
         # Rows with many delimiters or pipes often come from tables
         if text.count("|") >= 2 or text.count(";") >= 2:
             return True
 
         return False
 
-    def _is_noise_heading(self, text: str) -> bool:
+    def _is_noise_heading(self, text: str, span_count: int = 1) -> bool:
         t = text.strip()
         low = self.normalize(t)
+        is_canonical = self._is_canonical_heading(t)
 
-        if self._looks_like_table_row(t):
+        if self._looks_like_table_row(t, span_count=span_count):
             return True
+
+        if is_canonical:
+            return False
 
         if len(t) < 3 or len(t) > 140:
             return True
@@ -175,12 +232,14 @@ class SectionMiner:
             return True
         if re.match(r"^\d+$", t):
             return True
+        if t.isupper() and len(t.split()) <= 3:
+            return True
 
         return False
 
     def _looks_like_heading(self, offset: dict, threshold: float) -> bool:
         text = offset["text"].strip()
-        if self._is_noise_heading(text):
+        if self._is_noise_heading(text, span_count=int(offset.get("span_count", 1))):
             return False
 
         has_numbering = bool(re.match(r"^\d+(?:\.\d+)*\s+\w", text))
@@ -202,29 +261,34 @@ class SectionMiner:
                     continue
 
                 for line in block["lines"]:
-                    for span in line["spans"]:
-                        raw_text = span.get("text", "")
-                        if not raw_text or not raw_text.strip():
-                            continue
+                    spans = [span for span in line["spans"] if span.get("text", "").strip()]
+                    if not spans:
+                        continue
 
-                        text = self._fix_unicode(raw_text)
-                        text = _sanitize_text(text)
-                        if self._is_corrupted(text):
-                            continue
+                    raw_text = " ".join(span.get("text", "").strip() for span in spans)
+                    text = self._fix_unicode(raw_text)
+                    text = _sanitize_text(text)
+                    if self._is_corrupted(text):
+                        continue
 
-                        text = text.strip()
-                        if not text:
-                            continue
+                    text = text.strip()
+                    if not text:
+                        continue
 
-                        blocks.append(
-                            {
-                                "text": text,
-                                "size": span["size"],
-                                "font": span["font"],
-                                "page": page_num,
-                                "bbox": _normalize_bbox(span.get("bbox")),
-                            }
-                        )
+                    sizes = [float(span.get("size", 0.0)) for span in spans if span.get("size") is not None]
+                    fonts = [str(span.get("font", "")) for span in spans if span.get("font")]
+                    bbox = _normalize_bbox(line.get("bbox"))
+
+                    blocks.append(
+                        {
+                            "text": text,
+                            "size": max(sizes) if sizes else 0.0,
+                            "font": fonts[0] if fonts else "Regular",
+                            "page": page_num,
+                            "bbox": bbox,
+                            "span_count": len(spans),
+                        }
+                    )
 
         self.blocks = blocks
         return blocks
@@ -394,6 +458,7 @@ class SectionMiner:
                     "font": span.get("font", "Regular"),
                     "page": int(span.get("page", -1)),
                     "bbox": _normalize_bbox(span.get("bbox")),
+                    "span_count": int(span.get("span_count", 1)),
                 }
             )
 

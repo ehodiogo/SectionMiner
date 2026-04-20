@@ -78,7 +78,14 @@ def _cleanup_old_jobs(request: Request, ttl_hours: int = 6) -> None:
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     templates = Jinja2Templates(directory=request.app.state.templates_dir)
-    return templates.TemplateResponse(request, "index.html")
+    settings = request.app.state.settings
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {
+            "default_preset_sections": "\n".join(settings.preset_sections or []),
+        },
+    )
 
 
 @router.post("/api/extract")

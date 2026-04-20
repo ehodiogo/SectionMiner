@@ -217,6 +217,16 @@ def _add_litellm_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_preset_args(parser: argparse.ArgumentParser, help_text: str) -> None:
+    parser.add_argument(
+        "--preset-section",
+        "--preset-sections",
+        action="append",
+        dest="preset_sections",
+        help=help_text,
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sectionminer",
@@ -243,11 +253,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     extract.add_argument("--gemini-api-key", help="Chave Gemini (fallback: GEMINI_API_KEY)")
     extract.add_argument("--gemini-model", default="gemini-2.0-flash", help="Modelo Gemini")
-    extract.add_argument(
-        "--preset-section",
-        action="append",
-        dest="preset_sections",
-        help="Titulo de secao esperado. Pode repetir ou separar por virgula/ponto-e-virgula.",
+    _add_preset_args(
+        extract,
+        "Titulo de secao esperado. Pode repetir ou separar por virgula/ponto-e-virgula.",
     )
     _add_litellm_args(extract)
     extract.set_defaults(func=_extract_command)
@@ -267,12 +275,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     section_text.add_argument("--gemini-api-key", help="Chave Gemini (fallback: GEMINI_API_KEY)")
     section_text.add_argument("--gemini-model", default="gemini-2.0-flash", help="Modelo Gemini")
-    section_text.add_argument(
-        "--preset-section",
-        action="append",
-        dest="preset_sections",
-        help="Titulo de secao esperado para guiar o agrupamento (opcional)",
-    )
+    _add_preset_args(section_text, "Titulo de secao esperado para guiar o agrupamento (opcional)")
     section_text.add_argument("--show-cost", action="store_true", help="Mostra custo total da chamada no stderr")
     _add_litellm_args(section_text)
     section_text.set_defaults(func=_section_text_command)
@@ -293,11 +296,9 @@ def _build_parser() -> argparse.ArgumentParser:
     runserver.add_argument("--gemini-api-key", help="Chave Gemini (fallback: GEMINI_API_KEY)")
     runserver.add_argument("--gemini-model", default="gemini-2.0-flash", help="Modelo Gemini")
     runserver.add_argument("--heuristic-only", action="store_true", help="Nao usa LLM; retorna secoes heuristicas")
-    runserver.add_argument(
-        "--preset-section",
-        action="append",
-        dest="preset_sections",
-        help="Titulo de secao esperado para pre-preencher a UI e a API (pode repetir ou separar por virgula)",
+    _add_preset_args(
+        runserver,
+        "Titulo de secao esperado para pre-preencher a UI e a API (pode repetir ou separar por virgula)",
     )
     _add_litellm_args(runserver)
     runserver.set_defaults(func=_runserver_command)

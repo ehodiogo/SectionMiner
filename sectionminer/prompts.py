@@ -11,6 +11,12 @@ Organise them into a single two-level hierarchy tree.
 
 {preset_sections}
 
+{allowed_titles}
+
+Important: treat table headers, column labels, figure/table captions,
+and row fragments as non-sections unless they are explicitly present in
+the source as a real academic section heading.
+
 ════════════════════════════════════════════════════════
 ## PRIME DIRECTIVE — READ FIRST
 ════════════════════════════════════════════════════════
