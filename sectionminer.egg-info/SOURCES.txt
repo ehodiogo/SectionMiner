@@ -17,6 +17,8 @@ sectionminer/server/__init__.py
 sectionminer/server/app.py
 sectionminer/server/routes.py
 sectionminer/server/static/app.js
+sectionminer/server/static/dashboard-app.js
 sectionminer/server/static/styles.css
 sectionminer/server/static/tailwind.css
+sectionminer/server/templates/dashboard.html
 sectionminer/server/templates/index.html

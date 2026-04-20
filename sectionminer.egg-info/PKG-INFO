@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sectionminer
-Version: 0.1.10
+Version: 0.1.11
 Summary: Extract sections and subsections from academic PDFs
 Author: SectionMiner Contributors
 License-Expression: MIT
@@ -331,16 +331,20 @@ sectionminer section-text paper.pdf "Introdução" \
 | `--use-litellm` | Enable LiteLLM backend (replaces OpenAI) |
 | `--litellm-model` | Model with provider prefix (e.g. `groq/llama3-8b-8192`). Fallback: `LITELLM_MODEL` env var |
 | `--litellm-api-key` | Provider API key. Fallback: `LITELLM_API_KEY` → `OPENAI_API_KEY` |
+| `--preset-section` / `--preset-sections` | Optional section title filter that can be repeated |
 
 ---
 
 ## 🌐 Web UI
 
-SectionMiner includes a FastAPI-powered visual interface with real-time PDF rendering and section highlighting.
+SectionMiner includes a FastAPI-powered dashboard with real-time PDF rendering, section cards, a detail modal, and social links.
 
 ```bash
 # Start with default PyMuPDF backend
 sectionminer runserver --host 127.0.0.1 --port 8000 --reload
+
+# Or, if you prefer the module entrypoint
+python -m sectionminer runserver --host 127.0.0.1 --port 8000 --reload
 
 # Use Gemini for extraction
 sectionminer runserver --extraction-backend gemini --gemini-model gemini-2.0-flash
@@ -352,14 +356,16 @@ sectionminer runserver --use-litellm --litellm-model groq/llama3-8b-8192
 sectionminer runserver --heuristic-only
 ```
 
-> Se o comando `sectionminer runserver` nao aparecer, atualize a instalacao local: `pip install -U .` ou `pip install -U sectionminer` dentro do seu ambiente virtual.
+> Se o comando `sectionminer runserver` nao aparecer, sua instalação local está desatualizada. Rode `pip install -e .` no projeto ou `pip install -U sectionminer` no ambiente virtual ativo.
 
 Open in your browser: **http://127.0.0.1:8000**
 
 **Features:**
 - Upload any PDF and view extracted sections in real time
 - Click a section to highlight its exact location in the PDF viewer
-- Dashboard shows: backend used, page count, section count, token usage, cost
+- Open "Ver detalhe" to read the full section text in a modal
+- Dashboard shows: backend used, page count, section count, and extraction mode
+- Preset sections can be passed from the UI, CLI, API, or Python code
 
 ### API Endpoints
 
@@ -407,7 +413,7 @@ Open in your browser: **http://127.0.0.1:8000**
 
 ### Frontend styles (Tailwind)
 
-The web UI CSS is built with Tailwind. Install the Node dev dependencies once, then build or watch:
+The dashboard uses Tailwind utilities. If you want to customize the stylesheet build pipeline, install the Node dev dependencies and run:
 
 ```bash
 npm install
