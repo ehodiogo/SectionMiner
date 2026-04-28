@@ -3,6 +3,10 @@ import unicodedata
 import json
 import fitz
 from sectionminer.client import LLMClient
+import subprocess
+import tempfile
+import os
+import shutil
 
 
 def _normalize_bbox(value) -> list[float] | None:
@@ -131,6 +135,9 @@ class SectionMiner:
                 f"recebido: {repr(extraction_backend)}"
             )
         print("Model do miner", model)
+        if pdf.lower().endswith(".docx"):
+            pdf = self._convert_docx_to_pdf(pdf)
+
         self.pdf = pdf
         self.api_key = api_key
         self.model = model
@@ -148,6 +155,43 @@ class SectionMiner:
         self.offsets: list | None = None
         self.sections: list | None = None
         self.section_structures: dict | None = None
+
+    def _convert_docx_to_pdf(self, docx_path: str) -> str:
+        out_dir = tempfile.mkdtemp()
+
+        libreoffice_bin = shutil.which("libreoffice") or shutil.which("soffice")
+
+        if not libreoffice_bin:
+            # fallback path padrão macOS
+            mac_path = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+            if os.path.exists(mac_path):
+                libreoffice_bin = mac_path
+            else:
+                raise RuntimeError(
+                    "LibreOffice não encontrado.\n"
+                    "Instale com: brew install --cask libreoffice"
+                )
+
+        subprocess.run(
+            [
+                libreoffice_bin,
+                "--headless",
+                "--convert-to", "pdf",
+                "--outdir", out_dir,
+                docx_path,
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        base = os.path.splitext(os.path.basename(docx_path))[0]
+        pdf_path = os.path.join(out_dir, f"{base}.pdf")
+
+        if not os.path.exists(pdf_path):
+            raise RuntimeError("Falha ao converter DOCX para PDF.")
+
+        return pdf_path
 
     def _normalize_preset_sections(self, values: list[str] | None) -> list[str]:
         if not values:
