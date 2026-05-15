@@ -122,7 +122,7 @@ class SectionMiner:
         self,
         pdf: str,
         api_key: str,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-5-mini",
         extraction_backend: str = "pymupdf",
         gemini_api_key: str | None = None,
         gemini_model: str = "gemini-2.0-flash",

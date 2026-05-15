@@ -12,7 +12,7 @@ def main():
     miner = SectionMiner(
         "files/Artigo_Provatis.pdf",
         api_key,
-        preset_sections=["Introdução"],
+        #preset_sections=["Introdução"],
     )
 
     try:
@@ -32,6 +32,8 @@ def main():
         print("\n=== RESUMO ===")
         text = miner.get_section_text("Introdução")
         print(text)
+
+        print(miner.sections)
 
     finally:
         miner.close()
