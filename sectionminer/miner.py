@@ -127,7 +127,7 @@ class SectionMiner:
         gemini_api_key: str | None = None,
         gemini_model: str = "gemini-2.0-flash",
         preset_sections: list[str] | None = None,
-        use_litellm: bool = False,
+        use_litellm: bool = False
     ):
         if extraction_backend not in self.SUPPORTED_BACKENDS:
             raise ValueError(

@@ -218,6 +218,8 @@ class LLMClient:
         heading_index: list,
         preset_sections: list[str] | None = None,
         allowed_titles: list[str] | None = None,
+        document_type: str = "Artigo Científico",
+        language: str = "PT-BR",
     ) -> tuple[dict, dict]:
         preset_sections = preset_sections or []
         allowed_titles = allowed_titles or []
@@ -276,6 +278,8 @@ class LLMClient:
                 "trees": heading_index,
                 "preset_sections": preset_instructions,
                 "allowed_titles": allowed_block,
+                "language": language,
+                "document_type": document_type,
             },
         )
         try:

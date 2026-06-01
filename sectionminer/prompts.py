@@ -1,4 +1,4 @@
-MERGE_TREE_PROMPT = """
+OLD_MERGE_TREE_PROMPT = """
 You are an expert in Brazilian academic document structure — including TCCs
 (Trabalhos de Conclusão de Curso), dissertações, teses, and scientific articles
 in Portuguese and English.
@@ -25,6 +25,11 @@ Filtering rules exist to discard obvious noise, not to
 aggressively prune legitimate content.
 A false negative (keeping noise) is far less harmful than
 a false positive (discarding a real section).
+
+NEVER invent, infer, or insert sections not explicitly present in the   ← NOVO
+input headings list. If a section is not in the input, it does not      ← NOVO
+exist. This prohibition is absolute and overrides any tendency to       ← NOVO
+"complete" a standard academic structure you recognise.                 ← NOVO
 
 ════════════════════════════════════════════════════════
 ## DECISION ORDER — apply strictly in this sequence
@@ -82,36 +87,42 @@ STEP 4 — KEEP
 5. DISCARD if the title ends with a period, colon, or semicolon.
 6. DISCARD if the title is a standalone number, page number, or Roman
    numeral with no accompanying text (e.g. "IV", "42", "xii").
-7. DISCARD if the title begins with a figure/table label prefix
-   (Figure, Figura, Table, Tabela, Fig., Tab., Quadro, Gráfico)
-   AND is a bare label with no descriptive caption — i.e. the title
-   consists ONLY of the prefix plus a number or letter and nothing
-   else (e.g. "Figura 3", "Table 2a", "Quadro 1").
+7. Figure/table labels — two cases:                                      ← ALTERADO (reescrita completa)
 
-   KEEP if the title begins with one of those prefixes but is followed
-   by a period, dash, or em-dash and a descriptive caption phrase of
-   5 or more words — this is a figure/table caption that may serve as
-   a navigable landmark.
+   DISCARD if the title begins with a figure/table label prefix
+   (Figure, Figura, Table, Tabela, Fig., Tab., Quadro, Gráfico)
+   AND the title consists ONLY of the prefix plus a number or letter
+   with nothing else (e.g. "Figura 3", "Table 2a", "Quadro 1").
+   These bare labels identify a visual object; the visual object
+   itself is not a navigable section.
+
+   KEEP the caption as a navigable landmark if the title begins with
+   one of those prefixes AND is followed by a period, dash, or em-dash
+   and a descriptive phrase of 5 or more words.
+   The figure or table image is not represented as a section —
+   only its descriptive caption is kept.
    Examples to KEEP:
      "Figura 1. Distribuição dos pacientes por grupo etário"
      "Table 3 — Summary of clinical outcomes by region"
+     "Quadro 2 – Comparação entre os grupos controle e experimental"
 
    Note: "Appendix", "Apêndice", "Anexo" are canonical (rule 11)
    and are always kept regardless of what follows them.
 
 8. DISCARD if the title is clearly a bullet/list fragment: starts with
    "•", "–", "-", or a lowercase letter mid-sentence.
-9. DISCARD if the title is a running header, footer, or repeated page
-   element (e.g. institution name, author name, journal name repeated
-   across pages).
-   Publication-type labels that appear as running page headers must
-   also be discarded unconditionally:
-     Artigo Original, Original Article, Artigo de Revisão,
-     Review Article, Relato de Caso, Case Report,
+9. DISCARD unconditionally, at ANY anchor position, if the title is    ← ALTERADO
+   a publication-type running label. These labels are noise regardless
+   of where they appear in the document — PDF extractors often capture
+   only the first occurrence, so absence of repetition is not a signal
+   of legitimacy:
+     Artigo Original, Original Article,
+     Artigo de Revisão, Review Article,
+     Relato de Caso, Case Report,
      Comunicação Breve, Short Communication,
      Editorial, Carta ao Editor, Letter to the Editor.
-   These labels are discarded even when they appear only once, because
-   PDF extractors often capture only the first occurrence.
+   Also discard other running header/footer patterns: institution name,
+   author name, journal name repeated across pages.
 
 ### Noise filters — rules A–H
    Apply only to NON-CANONICAL headings (step 2).
@@ -211,7 +222,7 @@ D. DISCARD if the title is the document's own title mistakenly captured
              "Congenital Zika Syndrome during the Covid-19 pandemic"
                                                 (start_anchor = 77)
            → concatenated = full article title; discard both via D(e).
-           
+
 ### Document Title Recovery — rule D-post
 
 After applying rule D(d) or D(e) to discard multi-line title fragments,
@@ -219,9 +230,12 @@ concatenate the discarded fragments (in start_anchor order, separated by
 a single space) and use the result as the value of the root "title" field
 in the output JSON, replacing the placeholder "Document".
 
-If no title fragments were discarded via rule D, set the root title to
-the value of the first canonical heading in the document, or leave it
-as "Document" if no such heading exists.
+If no title fragments were discarded via rule D, look for a non-canonical  ← ALTERADO
+heading at start_anchor ≤ 10 that was NOT discarded by any other rule —
+use it as the document title. If more than one qualifies, use the one
+with the lowest start_anchor.                                              ← NOVO
+Never use a canonical section name (rule 11) as the document title.        ← NOVO
+If no suitable heading is found, leave the root title as "Document".       ← ALTERADO
 
 E. DISCARD if the title is a publisher metadata or identifier string
    (e.g. "ISBN: 978-...", "DOI: 10.xxxx/...").
@@ -238,8 +252,9 @@ G. DISCARD if the title is a mathematical expression, formula token,
    — Main content is an inline citation bracket (e.g. "[38]", "[1, 2]").
 
 H. DISCARD if the title is an author byline or institutional affiliation
-   line. These appear near the beginning of the document (typically
-   start_anchor ≤ 20) and are not canonical:
+   line. These patterns are discarded at ANY anchor position —           ← ALTERADO
+   bylines and affiliations are noise regardless of where they appear.   ← ALTERADO
+   The start_anchor limit does NOT apply to rules H1–H3.                 ← NOVO
 
    H1. Matches a byline pattern: one or more proper names (capitalised
        words) separated by commas or semicolons, optionally followed by
@@ -433,11 +448,24 @@ IMPORTANT:
     d. The merged node's position is determined by the lowest start_anchor
        among the merged headings (see ordering rules).
 
+    NEVER split a compound canonical heading into two separate nodes.      ← NOVO
+    A heading like "Resultados e Discussão" is ONE section — do not        ← NOVO
+    create separate "Resultados" and "Discussão" nodes from it.            ← NOVO
+    Compound forms protected from splitting:                               ← NOVO
+      "Resultados e Discussão" / "Resultados e Discussões"                 ← NOVO
+      "Materiais e Métodos"                                                 ← NOVO
+      "Considerações Finais"                                                ← NOVO
+      "Referências Bibliográficas"                                          ← NOVO
+
 14. Do not create duplicate nodes.
 15. Do not merge sections that are genuinely distinct even if similar.
     Any two headings that match DIFFERENT entries in the canonical list
     (rule 11) are always distinct — regardless of start_anchor proximity,
     thematic similarity, or font/style similarity in the source PDF.
+    Examples that must NEVER be merged:                                    ← NOVO
+      "Introdução" + "Resumo"                                              ← NOVO
+      "Introdução" + "Metodologia"                                         ← NOVO
+      "Resumo" + "Abstract" (when both appear — e.g. bilingual articles)  ← NOVO
 
 ════════════════════════════════════════════════════════
 ### Ordering — rules 16–19 (CRITICAL)
@@ -464,8 +492,12 @@ IMPORTANT:
             rule 5, H1, etc.) that caused the discard.
       If you cannot name a specific rule, the heading must be KEPT.
 
-    CHECK 2 — No hallucination
-      Confirm that no section in the output was absent from the input.
+    CHECK 2 — No hallucination                                            ← ALTERADO (reforçado)
+      For every node in the output, point to the exact input heading
+      that generated it. If you cannot identify the source heading,
+      the node must be removed. No section may appear in the output
+      that is absent from the input — not even if it would be expected
+      for the document type. This check is absolute.
 
     CHECK 3 — Order
       Confirm the start_anchor sequence is strictly non-decreasing from
@@ -478,6 +510,19 @@ IMPORTANT:
     CHECK 5 — Merge safety
       Confirm that no two headings mapping to DIFFERENT rule-11 entries
       were merged into a single node.
+
+    CHECK 6 — No splitting                                                ← NOVO
+      Confirm that no compound canonical heading (e.g. "Resultados e
+      Discussão", "Materiais e Métodos") present in the input as a
+      single heading was split into two or more separate nodes.
+
+    CHECK 7 — Publication-type labels                                     ← NOVO
+      Confirm that no publication-type label (rule 9) appears in the
+      output, regardless of its anchor position.
+
+    CHECK 8 — Bylines and affiliations                                    ← NOVO
+      Confirm that no author name, byline, or institutional affiliation
+      (rule H) appears in the output, regardless of its anchor position.
 
     If any check fails, correct the output before returning it.
 
@@ -510,6 +555,238 @@ IMPORTANT:
         }}
       ]
     }}
+  ]
+}}
+
+## Input headings
+{trees}
+"""
+
+MERGE_TREE_PROMPT = """
+You are an expert in academic document structure ({document_type}, {language}).
+
+## Task
+Receive a flat list of PDF headings (title, level, start_anchor, end_anchor).
+Organise them into a two-level hierarchy tree.
+
+{preset_sections}
+{allowed_titles}
+
+---
+
+## PRIME DIRECTIVE
+When in doubt → KEEP.
+Noise rules discard obvious junk, not legitimate content.
+Keeping noise is far less harmful than discarding real sections.
+NEVER invent sections absent from the input. This is absolute.
+
+---
+
+## DECISION FLOW (apply in order, stop at first match)
+
+1. CANONICAL? (Rule 11) → KEEP unconditionally. Skip steps 2–3.
+2. NOISE? (Rules A–H) → DISCARD. If rule 11b variant, resolve doubt as KEEP.
+3. GENERAL FILTER? (Rules 4–9) → DISCARD if clear match; else KEEP.
+4. Default → KEEP.
+
+---
+
+## CANONICAL SECTIONS — Rule 11
+These are PROTECTED. Match = skip all other rules and keep.
+Match is case-insensitive, ignores numbering prefixes and accents.
+All-caps forms are canonical too: "RESULTADOS E DISCUSSÃO", "MATERIAIS E MÉTODOS", etc.
+
+Front matter: Abstract / Resumo / Resumo Expandido / Keywords / Palavras-chave /
+  Acknowledgements / Agradecimentos / Dedication / Dedicatória / Epigraph / Epígrafe /
+  Table of Contents / Sumário / Índice / List of Figures / Lista de Figuras /
+  List of Tables / Lista de Tabelas / List of Abbreviations / Lista de Abreviaturas e Siglas /
+  Preface / Prefácio / Apresentação
+
+Body: Introduction / Introdução / Objectives / Objetivos / Objetivo Geral /
+  Objetivos Específicos / Theoretical Background / Fundamentação Teórica /
+  Revisão de Literatura / Referencial Teórico / Estado da Arte / Revisão Bibliográfica /
+  Methodology / Metodologia / Materiais e Métodos / Métodos / Método /
+  Procedimentos Metodológicos / Delineamento do Estudo / Percurso Metodológico /
+  Aspectos Metodológicos / Results / Resultados / Discussion / Discussão /
+  Análise dos Resultados / Análise e Discussão / Results and Discussion /
+  Resultados e Discussão / Resultados e Discussões / Conclusion / Conclusão /
+  Considerações Finais / Conclusões / Considerações Gerais / Palavras Finais /
+  Reflexões Finais
+
+Back matter: References / Referências / Referências Bibliográficas / Bibliografia /
+  Appendices / Apêndices / Apêndice / Annexes / Anexos / Anexo / Glossary / Glossário
+
+---
+
+## NOISE RULES — Rules A–H
+Apply only to NON-CANONICAL headings.
+
+A. Table header / column label / data identifier:
+   A1. Single word/phrase that is a scale, benchmark, or data category (not a section word).
+       Discard: ETAPA, GMFCS, BLEU, IEEE. Never discard canonical names even if all-caps.
+   A2. Number or number+unit read as data value: "4 ou Mais", "1 Salário", "≥ 2 anos".
+   A3. Comma-separated math variables: "Q, K, V", "d_k, d_v".
+   A4. Benchmark / language-pair ID (2–12 chars, uppercase+digits+hyphens): "EN-DE", "WSJ 23 F1".
+       Never discard all-caps canonical names or compound canonical forms.
+
+B. Body-text fragment:
+   B1. Ends with open/close quote or close parenthesis (mid-sentence cut).
+   B2. 1–4 characters and not a known section abbreviation.
+   B3. Starts with comma, closing parenthesis, or math operator.
+   B4. Single parenthesised letter/number sub-item label: "(A)", "(1)".
+
+C. Bibliographic entry:
+   C1. Contains ISBN:, ISSN:, DOI, doi:, http://, https://.
+   C2. Ends with "Edited by", "et al.", "org.", "eds.".
+   C3. Numbered-reference pattern: digits + "." or ")" + author surname in title case.
+   C4. Journal/book title fragment: "Journal of …", "Rev. Bras. …", edition/volume info.
+
+D. Document title captured as heading (all three conditions required):
+   — start_anchor ≤ 15
+   — NOT canonical
+   — AND at least one of:
+     (a) Contains a colon in the middle (subtitle punctuation).
+     (b) Longer than 40 chars, reads as a noun phrase, no rule-11 word in it.
+     (c) Immediately precedes a front-matter canonical section with no section in between.
+     (d) Ends with a dangling preposition/conjunction AND the next heading (by anchor),
+         when concatenated, forms a plausible title. Discard both fragments.
+     (e) Two or more consecutive non-canonical headings at start_anchor ≤ 30 whose
+         combined text exceeds 60 chars and reads as one noun phrase. Discard all.
+
+E. Publisher metadata / identifier string (ISBN, DOI strings).
+
+F. Dataset description fragment: starts with a 4-digit year + training/corpus description.
+
+G. Math expression or code fragment: operators, angle brackets, function-call syntax,
+   no natural-language words; or main content is a citation bracket ([38], [1,2]).
+
+H. Author byline or institutional affiliation (discard at ANY anchor position):
+   H1. Proper names separated by commas/semicolons ± superscripts or degrees.
+   H2. Superscript digit/symbol + university/hospital/city/country.
+   H3. Only an ORCID, email, funding statement, or conflict-of-interest declaration.
+
+---
+
+## DOCUMENT TITLE RECOVERY
+This determines the value of the root "title" field. Apply in order:
+
+1. If headings were discarded via rule D(d) or D(e): concatenate them in start_anchor order
+   (separated by a single space) → use as root title.
+2. Else if there is a non-canonical heading at start_anchor ≤ 10 that was NOT discarded
+   by any rule: use the one with the lowest start_anchor as root title.
+3. Never use a canonical section name (rule 11) as root title.
+4. Fallback: root title = "Document".
+
+---
+
+## GENERAL FILTERS — Rules 4–9
+Apply only to NON-CANONICAL headings that passed rules A–H.
+
+4. Longer than 100 characters → DISCARD.
+5. Ends with period, colon, or semicolon → DISCARD.
+6. Standalone number, page number, or bare Roman numeral → DISCARD.
+7. Figure/table labels:
+   — Bare label (prefix + number only, e.g. "Figura 3", "Table 2a") → DISCARD.
+   — Prefix + dash/period + descriptive phrase of ≥5 words → KEEP.
+   — "Apêndice", "Anexo", "Appendix" are canonical → always KEEP.
+8. Starts with bullet "•", "–", "-", or lowercase mid-sentence → DISCARD.
+9. Publication-type running label → DISCARD unconditionally at any anchor:
+   Artigo Original, Original Article, Artigo de Revisão, Review Article,
+   Relato de Caso, Case Report, Comunicação Breve, Short Communication,
+   Editorial, Carta ao Editor, Letter to the Editor.
+   Also: repeated institution/author/journal running headers/footers.
+
+---
+
+## SUBTYPE BIAS — Rule 11b
+Infer subtype from canonical markers (e.g. "Relato de Caso" → case report).
+Default: Original Article (IMRaD).
+When a heading matches a subtype-expected variant below AND fits its expected position,
+resolve any doubt in rules A–H and 4–9 as KEEP.
+
+Original Article variants: Delineamento do Estudo, Percurso Metodológico,
+  Aspectos Metodológicos, Análise dos Dados, Análise Estatística, Coleta de Dados,
+  Amostra, Participantes, Casuística, Limitações, Implicações Clínicas,
+  Declaração de Ética, Aprovação Ética, Aspectos Éticos, Conflito de Interesses,
+  Financiamento.
+
+Review Article variants: Estratégia de Busca, Critérios de Inclusão/Exclusão,
+  Critérios de Elegibilidade, Seleção dos Estudos, Avaliação da Qualidade,
+  Extração dos Dados, Síntese dos Resultados, Qualidade da Evidência, Risco de Viés,
+  Caracterização dos Estudos, Estudos Incluídos/Excluídos.
+
+Case Report variants: Descrição do Caso, Apresentação do Caso, Relato do Caso,
+  História Clínica, Exame Físico, Exames Complementares, Evolução Clínica,
+  Tratamento, Diagnóstico, Discussão do Caso, Seguimento.
+
+---
+
+## STRUCTURE RULES
+
+1. Each node: exactly {{"title": "…", "children": […]}}.
+2. Max 2 levels (sections and subsections).
+3. Ambiguous level → treat as level 1.
+3b. Subsections are optional. Only include a child if its heading was explicitly level 2.
+    Never infer or fabricate subsections.
+10. If discarding a heading leaves a parent with no children, keep the parent (children: []).
+
+---
+
+## MERGING — Rules 13–15
+
+13. Merge only headings that refer to the SAME section:
+    — Same title ± numbering prefix ("Methodology" + "3. Methodology" → one node).
+    — Same canonical section in different cases, ONLY if both map to the SAME rule-11 entry.
+    When merging: prefer numbered title; prefer longer if no number; normalise to title case;
+    use lowest start_anchor for position.
+    NEVER merge headings that map to DIFFERENT rule-11 entries (e.g. Resumo + Introdução).
+    NEVER split compound canonical headings into separate nodes:
+      "Resultados e Discussão", "Materiais e Métodos",
+      "Considerações Finais", "Referências Bibliográficas".
+14. No duplicate nodes.
+15. Genuinely distinct sections are never merged.
+
+---
+
+## ORDERING — Rules 16–19 (CRITICAL)
+
+16. Output order = physical document order = ascending start_anchor.
+17. NEVER reorder to match a canonical template.
+18. Subsections also ordered by ascending start_anchor.
+19. Merged node position = lowest start_anchor among sources.
+
+---
+
+## SELF-CHECK (run before outputting)
+
+1. Completeness: every input heading either appears once in output OR has a named discard rule.
+   Cannot name a rule → KEEP.
+2. No hallucination: every output node traces to an exact input heading.
+   No source → REMOVE.
+3. Order: start_anchors strictly non-decreasing at every level.
+4. Canonical safety: no rule-11 heading was discarded.
+5. Merge safety: no two different rule-11 entries were merged.
+6. No splitting: no compound canonical heading was split into multiple nodes.
+7. No publication-type labels (rule 9) in output.
+8. No bylines/affiliations (rule H) in output.
+9. Subsection source: every level-2 child comes from an input level-2 heading.
+10. Title check: root "title" is the recovered document title, NOT "Document",
+    unless no title could be identified.
+
+---
+
+## OUTPUT FORMAT
+
+Return raw JSON only — no markdown fences, no comments.
+The root "title" must be the actual document title recovered per the Title Recovery rules above.
+
+{{
+  "title": "<actual document title recovered from headings>",
+  "children": [
+    {{"title": "<Section A>", "children": []}},
+    {{"title": "<Section B>", "children": [
+      {{"title": "<Subsection B.1>", "children": []}}
+    ]}}
   ]
 }}
 
