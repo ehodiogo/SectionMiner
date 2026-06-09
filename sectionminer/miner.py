@@ -193,6 +193,82 @@ class SectionMiner:
 
         return pdf_path
 
+    def _chunk_offsets_by_page(self, chunk_size: int = 10, overlap: int = 1) -> list[list[dict]]:
+        """Divide offsets em chunks de páginas com overlap."""
+        if not self.offsets:
+            return []
+
+        # Descobrir páginas únicas em ordem
+        pages = sorted(set(o["page"] for o in self.offsets if o.get("page") is not None))
+        if not pages:
+            return [self.offsets]
+
+        chunks = []
+        i = 0
+        while i < len(pages):
+            page_window = pages[i: i + chunk_size]
+            page_set = set(page_window)
+            chunk = [o for o in self.offsets if o.get("page") in page_set]
+            if chunk:
+                chunks.append(chunk)
+            i += chunk_size - overlap  # avança com overlap
+
+        return chunks
+
+    def detect_headings_chunked(self, chunk_size: int = 10, overlap: int = 1) -> list:
+        """Detecta headings processando offsets em chunks de páginas."""
+        chunks = self._chunk_offsets_by_page(chunk_size=chunk_size, overlap=overlap)
+        if not chunks:
+            return self.detect_headings()  # fallback
+
+        seen: set[str] = set()
+        all_headings = []
+
+        # Salva offsets originais para restaurar depois
+        original_offsets = self.offsets
+
+        for chunk in chunks:
+            self.offsets = chunk
+            threshold = self._detect_threshold()
+            for o in chunk:
+                if not self._looks_like_heading(o, threshold):
+                    continue
+                key = self.normalize(o["text"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                all_headings.append(o)
+
+        # Restaura e ordena por posição no texto
+        self.offsets = original_offsets
+        all_headings.sort(key=lambda h: h["start"])
+        return all_headings
+
+    def build_sections_chunked(self, chunk_size: int = 10, overlap: int = 1) -> list:
+        """build_sections usando detecção de headings por chunks."""
+        headings = self.detect_headings_chunked(chunk_size=chunk_size, overlap=overlap)
+        sections = []
+
+        for i, h in enumerate(headings):
+            start = h["start"]
+            end = headings[i + 1]["start"] if i + 1 < len(headings) else len(self.full_text)
+
+            title = h["text"].strip()
+            has_numbering = re.match(r"^(\d+(?:\.\d+)*)", title)
+            numbering_depth = len(re.findall(r"\.", has_numbering.group(1))) + 1 if has_numbering else 1
+            level = 2 if numbering_depth >= 2 else 1
+
+            sections.append({
+                "title": title,
+                "level": level,
+                "start": start,
+                "end": end,
+                "text": self.full_text[start:end],
+            })
+
+        self.section_structures = sections
+        return sections
+
     def _normalize_preset_sections(self, values: list[str] | None) -> list[str]:
         if not values:
             return []
@@ -566,7 +642,7 @@ class SectionMiner:
             self.extract_blocks()
             self.build_full_text()
 
-        self.build_sections()
+        self.build_sections_chunked(chunk_size=10, overlap=1)
         self.client = LLMClient(api_key=self.api_key, model=self.model, max_tokens=4096, use_litellm=self.use_litellm)
 
         heading_index = []
