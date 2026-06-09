@@ -21,7 +21,7 @@ class LLMClient:
             }
         elif model.startswith("gpt-5"):
             return {
-                "temperature": 1,  # obrigatório
+                "temperature": 0,  # obrigatório
             }
         else:
             return {

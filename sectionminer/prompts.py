@@ -166,6 +166,30 @@ This determines the value of the root "title" field. Apply in order:
 3. Never use a canonical section name (rule 11) as root title.
 4. Fallback: root title = "Document".
 
+CRITICAL — NO DOUBLE APPEARANCE:
+A heading used as the root title MUST NOT also appear as a child node in "children".
+The title heading is consumed entirely by the root; remove it from the section list.
+This applies whether the heading was discarded via rule D or promoted via step 2 above.
+
+  WRONG — title duplicated as first child:
+  {{
+    "title": "Impacto da Tecnologia na Educação Básica",
+    "children": [
+      {{"title": "Impacto da Tecnologia na Educação Básica", "children": []}},  ← REMOVE
+      {{"title": "Resumo", "children": []}},
+      ...
+    ]
+  }}
+
+  CORRECT — title only at root, absent from children:
+  {{
+    "title": "Impacto da Tecnologia na Educação Básica",
+    "children": [
+      {{"title": "Resumo", "children": []}},
+      ...
+    ]
+  }}
+
 ---
 
 ## GENERAL FILTERS — Rules 4–9
@@ -280,6 +304,8 @@ Case Report variants: Descrição do Caso, Apresentação do Caso, Relato do Cas
 13. Subsection completeness (NEW): for every decimal-prefixed heading with
     two or more segments, confirm it appears as a level-2 child in the output
     or has a named discard rule (excluding rule 0b itself).
+14. No-duplicate-title check (NEW): confirm the root "title" value does NOT
+    appear anywhere inside "children" at any level. If it does, remove it.
 
 ---
 
