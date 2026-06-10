@@ -21,7 +21,7 @@ class LLMClient:
             }
         elif model.startswith("gpt-5"):
             return {
-                "temperature": 0,  # obrigatório
+                "temperature": 1,  # obrigatório
             }
         else:
             return {
@@ -29,9 +29,7 @@ class LLMClient:
             }
 
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", max_tokens: int = 8000, use_litellm: bool = False):
-        print("Model ", model)
         config = self._get_model_config(model)
-        print("Config ", config)
 
         if not use_litellm:
             self.llm = ChatOpenAI(

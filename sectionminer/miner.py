@@ -134,7 +134,6 @@ class SectionMiner:
                 f"extraction_backend deve ser um de {self.SUPPORTED_BACKENDS}, "
                 f"recebido: {repr(extraction_backend)}"
             )
-        print("Model do miner", model)
         if pdf.lower().endswith(".docx"):
             pdf = self._convert_docx_to_pdf(pdf)
 
@@ -257,6 +256,9 @@ class SectionMiner:
             has_numbering = re.match(r"^(\d+(?:\.\d+)*)", title)
             numbering_depth = len(re.findall(r"\.", has_numbering.group(1))) + 1 if has_numbering else 1
             level = 2 if numbering_depth >= 2 else 1
+
+            if title.startswith("-"):
+                title = title.split("-")[1].strip()
 
             sections.append({
                 "title": title,

@@ -7,7 +7,7 @@ def main():
     litellm_api_key = config("OPENAI_API_KEY", default=None)
     litellm_model = config("LITELLM_MODEL", default="openai/gpt-4o-mini")
     gemini_api_key = config("GEMINI_API_KEY", default=None)
-    gemini_model = config("GEMINI_MODEL", default="gemini-2.0-flash")
+    gemini_model = config("GEMINI_MODEL", default="gemini-2.5-flash-lite")
 
     if not litellm_api_key:
         raise SystemExit("OPENAI_API_KEY (ou chave do provider LiteLLM) não encontrada.")
